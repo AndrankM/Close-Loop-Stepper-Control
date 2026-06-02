@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pi LED Control</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f1117;
+      color: #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 2rem;
+      letter-spacing: 0.05em;
+      color: #a0cfff;
+    }
+
+    .card {
+      background: #1a1d27;
+      border: 1px solid #2a2d3e;
+      border-radius: 16px;
+      padding: 2.5rem 3rem;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      width: 320px;
+    }
+
+    .led-indicator {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      margin: 0 auto 1.5rem;
+      background: #222;
+      border: 3px solid #333;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+
+    .led-indicator.on {
+      background: #00ff88;
+      box-shadow: 0 0 24px #00ff88, 0 0 48px #00cc66;
+      border-color: #00ff88;
+    }
+
+    .status-text {
+      font-size: 1.1rem;
+      margin-bottom: 2rem;
+      color: #888;
+    }
+
+    .status-text span {
+      font-weight: bold;
+      color: #e0e0e0;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+    }
+
+    button {
+      padding: 0.75rem 1.75rem;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+
+    button:active { transform: scale(0.96); }
+    button:disabled { opacity: 0.4; cursor: default; }
+
+    #btn-on  { background: #00cc66; color: #000; }
+    #btn-off { background: #e03e3e; color: #fff; }
+
+    .footer {
+      margin-top: 2.5rem;
+      font-size: 0.78rem;
+      color: #444;
+    }
+  </style>
+</head>
+<body>
+  <h1>Raspberry Pi 5 — LED Control</h1>
+  <div class="card">
+    <div class="led-indicator" id="led-indicator"></div>
+    <p class="status-text">Status: <span id="status-label">Loading...</span></p>
+    <div class="buttons">
+      <button id="btn-off" onclick="setLed('off')">Turn Off</button>
+      <button id="btn-on"  onclick="setLed('on')">Turn On</button>
+    </div>
+  </div>
+  <p class="footer">AndPI5 · 192.168.0.103:5000</p>
+
+  <script>
+    async function fetchStatus() {
+      const res = await fetch('/led/status');
+      const data = await res.json();
+      applyState(data.status);
+    }
+
+    async function setLed(state) {
+      document.getElementById('btn-on').disabled = true;
+      document.getElementById('btn-off').disabled = true;
+      const res = await fetch(`/led/${state}`, { method: 'POST' });
+      const data = await res.json();
+      applyState(data.status);
+      document.getElementById('btn-on').disabled = false;
+      document.getElementById('btn-off').disabled = false;
+    }
+
+    function applyState(state) {
+      const indicator = document.getElementById('led-indicator');
+      const label = document.getElementById('status-label');
+      if (state === 'on') {
+        indicator.classList.add('on');
+        label.textContent = 'ON';
+        label.style.color = '#00ff88';
+      } else {
+        indicator.classList.remove('on');
+        label.textContent = 'OFF';
+        label.style.color = '#e03e3e';
+      }
+    }
+
+    fetchStatus();
+  </script>
+</body>
+</html>
