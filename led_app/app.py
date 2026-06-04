@@ -5,11 +5,12 @@ import time
 from flask import Flask, jsonify, render_template, request
 
 try:
-    from gpiozero import DigitalOutputDevice
+    from gpiozero import DigitalOutputDevice, PWMOutputDevice
 
     GPIO_AVAILABLE = True
 except Exception:  # gpiozero not installed / not running on a Pi
     DigitalOutputDevice = None
+    PWMOutputDevice = None
     GPIO_AVAILABLE = False
 
 try:
@@ -41,20 +42,31 @@ def read_brightness():
 
 # ---------------------------------------------------------------------------
 # NEMA 17 + MKS SERVO42C stepper control
-#   EN  -> GPIO 17   (enable, active-LOW on the SERVO42C)
-#   STP -> GPIO 27   (step pulse)
-#   DIR -> GPIO 22   (direction)
+#   Motor 1:  EN -> GPIO 17   STP -> GPIO 27   DIR -> GPIO 22
+#   Motor 2:  EN -> GPIO 2    STP -> GPIO 3    DIR -> GPIO 4
+#   (EN is active-LOW on the SERVO42C)
 # ---------------------------------------------------------------------------
 EN_PIN = 17
 STP_PIN = 27
 DIR_PIN = 22
 
+EN2_PIN = 2
+STP2_PIN = 3
+DIR2_PIN = 4
+
+# Gearbox reduction (motor revs : output revs). Motor 1 is direct-drive;
+# motor 2 has a 5:1 planetary reducer, so its output shaft turns 5x slower
+# than the motor shaft (and the encoder, which sits on the motor shaft).
+MOTOR1_GEAR_RATIO = 1.0
+MOTOR2_GEAR_RATIO = 5.0
+
 # Driver enable pin is active-LOW: drive LOW to energize the coils.
 EN_ACTIVE_LOW = True
 
-# Speed limits in steps per second.
+# Speed limits in steps per second. The hardware-timed PWM step generator can
+# drive well past the old 2000 cap; 6000 sps = ~112 motor RPM at 1/16 stepping.
 MIN_SPEED = 1
-MAX_SPEED = 2000
+MAX_SPEED = 6000
 DEFAULT_SPEED = 400
 
 # Mechanical / driver geometry used to convert between steps/sec and RPM.
@@ -73,7 +85,7 @@ DEFAULT_ACCEL = 4000
 class StepperMotor:
     """Generates step pulses on a background thread while the motor is enabled."""
 
-    def __init__(self):
+    def __init__(self, en_pin, stp_pin, dir_pin, gear_ratio=1.0):
         self._lock = threading.Lock()
         self.enabled = False
         self.stopping = False
@@ -83,6 +95,7 @@ class StepperMotor:
         self.accel = DEFAULT_ACCEL  # steps per second^2
         self.full_steps_per_rev = DEFAULT_FULL_STEPS_PER_REV
         self.microstepping = DEFAULT_MICROSTEPPING
+        self.gear_ratio = float(gear_ratio) or 1.0  # motor revs : output revs
         self._stop = threading.Event()
         self._soft_stop = threading.Event()
         self._thread = None
@@ -91,18 +104,28 @@ class StepperMotor:
             # The device handles active-low inversion so "off" leaves the
             # driver disabled (EN pin held HIGH).
             self._en = DigitalOutputDevice(
-                EN_PIN, active_high=not EN_ACTIVE_LOW, initial_value=False
+                en_pin, active_high=not EN_ACTIVE_LOW, initial_value=False
             )
-            self._step = DigitalOutputDevice(STP_PIN, initial_value=False)
-            self._dir = DigitalOutputDevice(DIR_PIN, initial_value=False)
+            # Step pulses are produced by a hardware-timed PWM square wave
+            # (frequency = step rate, 50% duty). This keeps pulse timing
+            # accurate and linear at high speeds, which a Python sleep-loop
+            # cannot do. value=0 means "no pulses".
+            self._step = PWMOutputDevice(
+                stp_pin, frequency=max(1, int(DEFAULT_SPEED)), initial_value=0.0
+            )
+            self._dir = DigitalOutputDevice(dir_pin, initial_value=False)
         else:
             self._en = self._step = self._dir = None
 
     # -- worker -------------------------------------------------------------
     def _run(self):
-        # Ramp current_speed toward target self.speed by self.accel each step,
-        # then time the pulse for the ramped speed.
+        # The worker only ramps current_speed toward the target and updates the
+        # PWM frequency; the hardware PWM does the precise pulse timing. The
+        # ramp loop's own timing can be loose without affecting motor speed.
+        RAMP_DT = 0.02  # seconds between ramp updates
         last = time.monotonic()
+        if self._step is not None:
+            self._step.value = 0.5  # 50% duty -> emit step pulses
         while not self._stop.is_set():
             now = time.monotonic()
             dt = now - last
@@ -120,18 +143,15 @@ class StepperMotor:
                 break
 
             speed = max(self.current_speed, float(MIN_SPEED))
-            half = 1.0 / (2.0 * speed)
             if self._step is not None:
-                self._step.on()
-                time.sleep(half)
-                self._step.off()
-                time.sleep(half)
-            else:
-                time.sleep(half * 2)
+                self._step.frequency = max(1, int(round(speed)))
+            time.sleep(RAMP_DT)
 
-        # Worker is exiting (soft ramp-down completed). De-energize and clear
-        # state so the motor is fully stopped without blocking the caller.
+        # Worker is exiting (soft ramp-down completed). Stop pulses, de-energize
+        # and clear state so the motor is fully stopped without blocking.
         self.current_speed = 0.0
+        if self._step is not None:
+            self._step.value = 0.0  # stop emitting pulses
         if self._en is not None:
             self._en.off()
         with self._lock:
@@ -174,6 +194,8 @@ class StepperMotor:
         self._soft_stop.clear()
         self._stop.clear()
         self.current_speed = 0.0
+        if self._step is not None:
+            self._step.value = 0.0  # stop emitting pulses
         if self._en is not None:
             self._en.off()  # de-energize coils
 
@@ -195,9 +217,12 @@ class StepperMotor:
         return max(1, self.full_steps_per_rev * self.microstepping)
 
     def set_rpm(self, rpm):
+        # rpm is the desired OUTPUT-shaft speed; the motor must spin gear_ratio
+        # times faster to achieve it.
         rpm = float(rpm)
         with self._lock:
-            speed = round(rpm * self._steps_per_rev() / 60.0)
+            motor_rpm = rpm * self.gear_ratio
+            speed = round(motor_rpm * self._steps_per_rev() / 60.0)
             self.speed = max(MIN_SPEED, min(MAX_SPEED, speed))
         return self.speed
 
@@ -222,10 +247,13 @@ class StepperMotor:
         return accel
 
     def _rpm(self):
-        return round(self.speed * 60.0 / self._steps_per_rev(), 2)
+        # Reported as OUTPUT-shaft RPM (motor RPM divided by the reduction).
+        return round(self.speed * 60.0 / self._steps_per_rev() / self.gear_ratio, 2)
 
     def _current_rpm(self):
-        return round(self.current_speed * 60.0 / self._steps_per_rev(), 2)
+        return round(
+            self.current_speed * 60.0 / self._steps_per_rev() / self.gear_ratio, 2
+        )
 
     def _apply_direction(self):
         if self._dir is None:
@@ -248,19 +276,26 @@ class StepperMotor:
             "full_steps_per_rev": self.full_steps_per_rev,
             "microstepping": self.microstepping,
             "steps_per_rev": self._steps_per_rev(),
+            "gear_ratio": self.gear_ratio,
             "gpio": GPIO_AVAILABLE,
         }
 
 
-motor = StepperMotor()
+motors = {
+    1: StepperMotor(EN_PIN, STP_PIN, DIR_PIN, MOTOR1_GEAR_RATIO),
+    2: StepperMotor(EN2_PIN, STP2_PIN, DIR2_PIN, MOTOR2_GEAR_RATIO),
+}
 
 
 # ---------------------------------------------------------------------------
 # SERVO42C UART encoder reader
-#   Wiring (Pi <-> SERVO42C TTL header):
-#     Pi TXD (GPIO14) -> SERVO42C Rx
-#     Pi RXD (GPIO15) -> SERVO42C Tx
-#     Pi GND          -> SERVO42C G
+#   Wiring (Option A - shared multi-drop bus, one Pi UART):
+#     Pi TXD (GPIO14) -> every SERVO42C Rx
+#     every SERVO42C Tx -> Pi RXD (GPIO15)
+#     Pi GND          -> every SERVO42C G
+#   Each driver has a distinct address (set on its OLED): motor 1 = 0xE0
+#   (slot 0), motor 2 = 0xE1 (slot 1). Only the addressed motor replies, so
+#   the readers share ONE serial connection guarded by a single lock.
 #   Read encoder command (manual 5.1.1): send "ADDR 30 CRC", returns 8 bytes:
 #     ADDR + carry(int32, big-endian) + value(uint16, big-endian) + CRC
 #   CRC is checksum-8 (sum of preceding bytes & 0xFF).
@@ -269,52 +304,54 @@ motor = StepperMotor()
 # ---------------------------------------------------------------------------
 SERIAL_PORT = os.environ.get("SERVO_UART", "/dev/serial0")
 SERIAL_BAUD = int(os.environ.get("SERVO_BAUD", "9600"))
-MOTOR_ADDR = int(os.environ.get("SERVO_ADDR", "0xe0"), 0)
+MOTOR1_ADDR = int(os.environ.get("SERVO_ADDR", "0xe0"), 0)
+MOTOR2_ADDR = int(os.environ.get("SERVO_ADDR2", "0xe1"), 0)
 ENCODER_COUNTS_PER_REV = 65536  # 0~0xFFFF maps to 0~360 degrees
 READ_ENCODER_CMD = 0x30
 
+# Single shared UART connection for the addressed multi-drop bus.
+_serial_lock = threading.Lock()
+_serial_conn = None
+_serial_error = None
+if not SERIAL_AVAILABLE:
+    _serial_error = "pyserial not installed"
+else:
+    try:
+        _serial_conn = serial.Serial(SERIAL_PORT, SERIAL_BAUD, timeout=0.2)
+    except Exception as exc:  # port missing / permission denied
+        _serial_error = str(exc)
+
 
 class EncoderReader:
-    """Reads the SERVO42C magnetic encoder over the UART (TTL) port."""
+    """Reads one addressed SERVO42C encoder over the shared UART bus."""
 
-    def __init__(self, port=SERIAL_PORT, baud=SERIAL_BAUD, addr=MOTOR_ADDR):
-        self.port = port
-        self.baud = baud
+    def __init__(self, addr, gear_ratio=1.0):
         self.addr = addr & 0xFF
-        self._lock = threading.Lock()
-        self._ser = None
-        self.init_error = None
-        if not SERIAL_AVAILABLE:
-            self.init_error = "pyserial not installed"
-        else:
-            try:
-                self._ser = serial.Serial(port, baud, timeout=0.2)
-            except Exception as exc:  # port missing / permission denied
-                self.init_error = str(exc)
+        self.gear_ratio = float(gear_ratio) or 1.0  # motor revs : output revs
 
     @property
     def available(self):
-        return self._ser is not None
+        return _serial_conn is not None
 
     @staticmethod
     def _checksum(data):
         return sum(data) & 0xFF
 
     def read(self):
-        if self._ser is None:
-            return {"available": False, "error": self.init_error}
+        if _serial_conn is None:
+            return {"available": False, "error": _serial_error}
         cmd = bytes([self.addr, READ_ENCODER_CMD])
         packet = cmd + bytes([self._checksum(cmd)])
-        with self._lock:
+        with _serial_lock:
             try:
-                self._ser.reset_input_buffer()
-                self._ser.write(packet)
+                _serial_conn.reset_input_buffer()
+                _serial_conn.write(packet)
                 # Accumulate until 8 bytes arrive or the deadline passes, so a
                 # short per-read timeout doesn't truncate a slow reply.
                 resp = bytearray()
                 deadline = time.time() + 0.5
                 while len(resp) < 8 and time.time() < deadline:
-                    chunk = self._ser.read(8 - len(resp))
+                    chunk = _serial_conn.read(8 - len(resp))
                     if chunk:
                         resp.extend(chunk)
                 resp = bytes(resp)
@@ -335,19 +372,39 @@ class EncoderReader:
         angle = value / ENCODER_COUNTS_PER_REV * 360.0
         total_angle = counts / ENCODER_COUNTS_PER_REV * 360.0
         revolutions = counts / ENCODER_COUNTS_PER_REV
+        # The encoder is on the motor shaft; divide by the reduction to get the
+        # geared OUTPUT-shaft motion.
+        output_total_angle = total_angle / self.gear_ratio
+        output_revolutions = revolutions / self.gear_ratio
+        output_angle = output_total_angle % 360.0
         return {
             "available": True,
             "error": None,
             "carry": carry,
             "value": value,
             "counts": counts,
+            "gear_ratio": self.gear_ratio,
             "angle_deg": round(angle, 2),
             "total_angle_deg": round(total_angle, 2),
             "revolutions": round(revolutions, 4),
+            "output_angle_deg": round(output_angle, 2),
+            "output_total_angle_deg": round(output_total_angle, 2),
+            "output_revolutions": round(output_revolutions, 4),
         }
 
 
-encoder = EncoderReader()
+encoders = {
+    1: EncoderReader(MOTOR1_ADDR, MOTOR1_GEAR_RATIO),
+    2: EncoderReader(MOTOR2_ADDR, MOTOR2_GEAR_RATIO),
+}
+
+
+def get_motor(mid):
+    return motors.get(mid)
+
+
+def get_encoder(mid):
+    return encoders.get(mid)
 
 
 @app.route("/")
@@ -375,15 +432,21 @@ def led_status():
     return jsonify({"status": "on" if brightness == "0" else "off"})
 
 
-# -- Stepper motor ----------------------------------------------------------
-@app.route("/motor/enable", methods=["POST"])
-def motor_enable():
+# -- Stepper motors ---------------------------------------------------------
+@app.route("/motor/<int:mid>/enable", methods=["POST"])
+def motor_enable(mid):
+    motor = get_motor(mid)
+    if motor is None:
+        return jsonify({"error": "unknown motor"}), 404
     motor.enable()
     return jsonify(motor.status())
 
 
-@app.route("/motor/disable", methods=["POST"])
-def motor_disable():
+@app.route("/motor/<int:mid>/disable", methods=["POST"])
+def motor_disable(mid):
+    motor = get_motor(mid)
+    if motor is None:
+        return jsonify({"error": "unknown motor"}), 404
     data = request.get_json(silent=True) or {}
     # Default to a soft stop (ramp down); pass {"soft": false} for an
     # immediate hard stop / emergency cut.
@@ -392,8 +455,11 @@ def motor_disable():
     return jsonify(motor.status())
 
 
-@app.route("/motor/direction", methods=["POST"])
-def motor_direction():
+@app.route("/motor/<int:mid>/direction", methods=["POST"])
+def motor_direction(mid):
+    motor = get_motor(mid)
+    if motor is None:
+        return jsonify({"error": "unknown motor"}), 404
     data = request.get_json(silent=True) or {}
     direction = data.get("direction", "cw")
     try:
@@ -403,8 +469,11 @@ def motor_direction():
     return jsonify(motor.status())
 
 
-@app.route("/motor/speed", methods=["POST"])
-def motor_speed():
+@app.route("/motor/<int:mid>/speed", methods=["POST"])
+def motor_speed(mid):
+    motor = get_motor(mid)
+    if motor is None:
+        return jsonify({"error": "unknown motor"}), 404
     data = request.get_json(silent=True) or {}
     try:
         motor.set_speed(data.get("speed", DEFAULT_SPEED))
@@ -413,8 +482,11 @@ def motor_speed():
     return jsonify(motor.status())
 
 
-@app.route("/motor/rpm", methods=["POST"])
-def motor_rpm():
+@app.route("/motor/<int:mid>/rpm", methods=["POST"])
+def motor_rpm(mid):
+    motor = get_motor(mid)
+    if motor is None:
+        return jsonify({"error": "unknown motor"}), 404
     data = request.get_json(silent=True) or {}
     try:
         motor.set_rpm(data.get("rpm", 0))
@@ -423,8 +495,11 @@ def motor_rpm():
     return jsonify(motor.status())
 
 
-@app.route("/motor/geometry", methods=["POST"])
-def motor_geometry():
+@app.route("/motor/<int:mid>/geometry", methods=["POST"])
+def motor_geometry(mid):
+    motor = get_motor(mid)
+    if motor is None:
+        return jsonify({"error": "unknown motor"}), 404
     data = request.get_json(silent=True) or {}
     try:
         motor.set_geometry(
@@ -436,8 +511,11 @@ def motor_geometry():
     return jsonify(motor.status())
 
 
-@app.route("/motor/accel", methods=["POST"])
-def motor_accel():
+@app.route("/motor/<int:mid>/accel", methods=["POST"])
+def motor_accel(mid):
+    motor = get_motor(mid)
+    if motor is None:
+        return jsonify({"error": "unknown motor"}), 404
     data = request.get_json(silent=True) or {}
     try:
         motor.set_accel(data.get("accel", DEFAULT_ACCEL))
@@ -446,18 +524,25 @@ def motor_accel():
     return jsonify(motor.status())
 
 
-@app.route("/motor/status")
-def motor_status():
+@app.route("/motor/<int:mid>/status")
+def motor_status(mid):
+    motor = get_motor(mid)
+    if motor is None:
+        return jsonify({"error": "unknown motor"}), 404
     return jsonify(motor.status())
 
 
-@app.route("/motor/encoder")
-def motor_encoder():
-    return jsonify(encoder.read())
+@app.route("/motor/<int:mid>/encoder")
+def motor_encoder(mid):
+    enc = get_encoder(mid)
+    if enc is None:
+        return jsonify({"error": "unknown motor"}), 404
+    return jsonify(enc.read())
 
 
 if __name__ == "__main__":
     try:
         app.run(host="0.0.0.0", port=5000)
     finally:
-        motor.disable(soft=False)
+        for _m in motors.values():
+            _m.disable(soft=False)

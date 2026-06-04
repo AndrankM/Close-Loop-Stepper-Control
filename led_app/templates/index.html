@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pi LED Control</title>
+  <title>Closed-Loop Stepper Control</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -27,27 +27,34 @@
       text-transform: uppercase;
     }
 
-    .dashboard {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 1.5rem;
-      max-width: 1080px;
-      margin: 0 auto;
-      align-items: stretch;
-    }
-    .card.wide { grid-column: 1 / -1; }
-    .card-title {
-      font-size: 1.05rem;
-      letter-spacing: 0.04em;
-      color: #a0cfff;
-      margin-bottom: 1.25rem;
-      text-align: left;
-    }
-
     h1 {
       font-size: 1.8rem;
       letter-spacing: 0.05em;
       color: #a0cfff;
+    }
+
+    .units {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 2.25rem;
+    }
+    .unit-title {
+      font-size: 1.15rem;
+      color: #cfd6ee;
+      letter-spacing: 0.05em;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid #2a2d3e;
+    }
+    .unit-title small { color: #5a6178; font-size: 0.78rem; letter-spacing: 0.04em; }
+
+    .motor-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.5rem;
+      align-items: stretch;
     }
 
     .card {
@@ -61,38 +68,12 @@
       display: flex;
       flex-direction: column;
     }
-
-    .led-indicator {
-      width: 80px;
-      height: 80px;
-      border-radius: 50%;
-      margin: 0 auto 1.5rem;
-      background: #222;
-      border: 3px solid #333;
-      transition: background 0.3s, box-shadow 0.3s;
-    }
-
-    .led-indicator.on {
-      background: #00ff88;
-      box-shadow: 0 0 24px #00ff88, 0 0 48px #00cc66;
-      border-color: #00ff88;
-    }
-
-    .status-text {
-      font-size: 1.1rem;
-      margin-bottom: 2rem;
-      color: #888;
-    }
-
-    .status-text span {
-      font-weight: bold;
-      color: #e0e0e0;
-    }
-
-    .buttons {
-      display: flex;
-      gap: 1rem;
-      justify-content: center;
+    .card-title {
+      font-size: 1.05rem;
+      letter-spacing: 0.04em;
+      color: #a0cfff;
+      margin-bottom: 1.25rem;
+      text-align: left;
     }
 
     button {
@@ -104,12 +85,8 @@
       cursor: pointer;
       transition: opacity 0.2s, transform 0.1s;
     }
-
     button:active { transform: scale(0.96); }
     button:disabled { opacity: 0.4; cursor: default; }
-
-    #btn-on  { background: #00cc66; color: #000; }
-    #btn-off { background: #e03e3e; color: #fff; }
 
     /* --- Stepper motor card --- */
     .motor-status {
@@ -164,10 +141,10 @@
       padding-top: 1.25rem;
     }
 
-    #btn-motor-on  { background: #00cc66; color: #000; }
-    #btn-motor-off { background: #e03e3e; color: #fff; }
+    .btn-motor-on  { background: #00cc66; color: #000; }
+    .btn-motor-off { background: #e03e3e; color: #fff; }
 
-    #btn-estop {
+    .btn-estop {
       width: 100%;
       margin-top: 1rem;
       background: #7a1d1d;
@@ -176,11 +153,7 @@
       letter-spacing: 0.08em;
     }
 
-    .encoder {
-      border-top: 1px solid #2a2d3e;
-      margin-top: 1.5rem;
-      padding-top: 1.25rem;
-    }
+    /* --- Encoder card --- */
     .encoder-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -224,46 +197,6 @@
     }
     .enc-error { color: #e0863e; font-size: 0.8rem; }
 
-    .enc-chart-wrap {
-      margin-top: 0.75rem;
-      background: #0d0f16;
-      border: 1px solid #2a2d3e;
-      border-radius: 8px;
-      padding: 0.5rem;
-    }
-    .enc-chart-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 0.72rem;
-      color: #9aa4bf;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      margin-bottom: 0.35rem;
-    }
-    .enc-chart-head select {
-      background: #161924;
-      color: #cfd6ee;
-      border: 1px solid #2a2d3e;
-      border-radius: 4px;
-      padding: 0.15rem 0.4rem;
-      font-size: 0.72rem;
-    }
-    #enc-chart { width: 100%; height: 120px; display: block; }
-
-    .encoder-layout {
-      display: grid;
-      grid-template-columns: 1fr;
-      grid-template-rows: auto 1fr;
-      gap: 1.25rem;
-      align-items: stretch;
-      flex: 1;
-    }
-    .encoder-readout { text-align: center; }
-    .encoder-plot { display: flex; flex-direction: column; min-height: 0; }
-    .encoder-plot .enc-chart-wrap { display: flex; flex-direction: column; flex: 1; }
-    .encoder-plot #enc-chart { height: auto; flex: 1; min-height: 200px; }
-
     .live-badge {
       font-size: 0.72rem;
       font-weight: 700;
@@ -289,20 +222,18 @@
       padding: 0.75rem 1rem;
       margin-bottom: 1rem;
     }
-    .rev-counter-k {
-      font-size: 0.72rem;
-      color: #9aa4bf;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      margin-bottom: 0.2rem;
-    }
     .rev-counter-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
       margin-bottom: 0.2rem;
     }
-    .rev-counter-head .rev-counter-k { margin-bottom: 0; }
+    .rev-counter-k {
+      font-size: 0.72rem;
+      color: #9aa4bf;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
     .rev-reset-btn {
       background: #2a2d3e;
       color: #cfd6ee;
@@ -319,6 +250,44 @@
       line-height: 1;
     }
 
+    .enc-chart-wrap {
+      background: #0d0f16;
+      border: 1px solid #2a2d3e;
+      border-radius: 8px;
+      padding: 0.5rem;
+    }
+    .enc-chart-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.72rem;
+      color: #9aa4bf;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.35rem;
+    }
+    .enc-chart-head select {
+      background: #161924;
+      color: #cfd6ee;
+      border: 1px solid #2a2d3e;
+      border-radius: 4px;
+      padding: 0.15rem 0.4rem;
+      font-size: 0.72rem;
+    }
+
+    .encoder-layout {
+      display: grid;
+      grid-template-columns: 1fr;
+      grid-template-rows: auto 1fr;
+      gap: 1.25rem;
+      align-items: stretch;
+      flex: 1;
+    }
+    .encoder-readout { text-align: center; }
+    .encoder-plot { display: flex; flex-direction: column; min-height: 0; }
+    .encoder-plot .enc-chart-wrap { display: flex; flex-direction: column; flex: 1; }
+    .encoder-plot canvas { width: 100%; height: auto; flex: 1; min-height: 200px; display: block; }
+
     .footer {
       margin-top: 2.5rem;
       text-align: center;
@@ -329,160 +298,185 @@
 </head>
 <body>
   <div class="page-header">
-    <h1>Raspberry Pi 5 — Control Panel</h1>
-    <div class="sub">NEMA 17 · MKS SERVO42C</div>
+    <h1>Closed-Loop Stepper Control</h1>
+    <div class="sub">2&times; NEMA 17 &middot; MKS SERVO42C</div>
   </div>
 
-  <div class="dashboard">
-  <div class="card">
-    <div class="card-title">Motor Control · NEMA 17</div>
-    <p class="motor-status">State: <span id="motor-state">Loading...</span></p>
-    <p class="motor-status" style="margin-top:-0.75rem;">
-      Live: <span id="live-rpm" style="color:#a0cfff;">0</span> RPM
-      (<span id="live-sps">0</span> sps)
-    </p>
+  <div class="units" id="units"></div>
 
-    <div class="control-row">
-      <label>Direction</label>
-      <div class="dir-toggle">
-        <button id="dir-cw"  onclick="setDirection('cw')">CW &#8635;</button>
-        <button id="dir-ccw" onclick="setDirection('ccw')">CCW &#8634;</button>
-      </div>
-    </div>
-
-    <div class="control-row">
-      <label>Speed</label>
-      <span class="speed-value">
-        <span id="speed-label">400</span> sps
-        &middot; <span id="rpm-label">--</span> RPM
-      </span>
-    </div>
-    <input type="range" id="speed-slider" min="1" max="2000" value="400"
-           oninput="onSpeedInput(this.value)" onchange="commitSpeed(this.value)" />
-
-    <div class="control-row" style="margin-top:1.25rem;">
-      <label>Acceleration</label>
-      <span class="speed-value"><span id="accel-label">4000</span> sps²</span>
-    </div>
-    <input type="range" id="accel-slider" min="100" max="50000" step="100" value="4000"
-           oninput="onAccelInput(this.value)" onchange="commitAccel(this.value)" />
-
-    <div class="control-row" style="margin-top:1.25rem;">
-      <label>Target RPM</label>
-      <div style="display:flex; gap:0.5rem;">
-        <input type="number" id="rpm-input" class="num-input" min="0" step="0.1" value="0" />
-        <button class="dir-toggle" style="background:#4a78ff;color:#fff;padding:0.5rem 1rem;"
-                onclick="setRpm()">Set</button>
-      </div>
-    </div>
-
-    <div class="geometry">
-      <div class="control-row">
-        <label>Full steps / rev</label>
-        <input type="number" id="fsteps-input" class="num-input" min="1" value="200"
-               onchange="setGeometry()" />
-      </div>
-      <div class="control-row" style="margin-bottom:0;">
-        <label>Microstepping</label>
-        <select id="micro-input" class="num-input" onchange="setGeometry()">
-          <option value="1">1</option>
-          <option value="2">2</option>
-          <option value="4">4</option>
-          <option value="8">8</option>
-          <option value="16" selected>16</option>
-          <option value="32">32</option>
-          <option value="64">64</option>
-          <option value="128">128</option>
-          <option value="256">256</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="buttons" style="margin-top:1.75rem;">
-      <button id="btn-motor-off" onclick="softStop()">Disable</button>
-      <button id="btn-motor-on"  onclick="setMotor('enable')">Enable</button>
-    </div>
-    <button id="btn-estop" onclick="hardStop()">⚠ EMERGENCY STOP</button>
-  </div>
-
-  <div class="card">
-    <div class="control-row" style="margin-bottom:1rem;">
-      <div class="card-title" style="margin-bottom:0;">Encoder · SERVO42C (UART)</div>
-      <span class="live-badge" id="enc-live">● LIVE</span>
-    </div>
-    <div class="encoder-layout">
-      <div class="encoder-readout">
-        <div class="rev-counter">
-          <div class="rev-counter-head">
-            <span class="rev-counter-k">Turns since reset</span>
-            <button class="rev-reset-btn" onclick="resetTurns()">Reset</button>
-          </div>
-          <div class="rev-counter-v"><span id="enc-turns">--</span></div>
-        </div>
-        <div class="enc-dial">
-          <div class="enc-needle" id="enc-needle"></div>
-          <div class="enc-hub"></div>
-        </div>
-        <div class="encoder-grid">
-          <div class="enc-cell">
-            <div class="enc-k">Shaft angle</div>
-            <div class="enc-v"><span id="enc-angle">--</span>°</div>
-          </div>
-          <div class="enc-cell">
-            <div class="enc-k">Revolutions</div>
-            <div class="enc-v" id="enc-revs">--</div>
-          </div>
-          <div class="enc-cell">
-            <div class="enc-k">Total angle</div>
-            <div class="enc-v"><span id="enc-total">--</span>°</div>
-          </div>
-          <div class="enc-cell">
-            <div class="enc-k">Raw value</div>
-            <div class="enc-v" id="enc-raw">--</div>
-          </div>
-        </div>
-        <p class="enc-error" id="enc-error"></p>
-      </div>
-      <div class="encoder-plot">
-        <div class="enc-chart-wrap" style="margin-top:0; height:100%;">
-          <div class="enc-chart-head">
-            <span id="enc-chart-label">Shaft angle (°) · last 30 s</span>
-            <select id="enc-chart-metric" onchange="resetChart()">
-              <option value="angle_deg">Shaft angle</option>
-              <option value="total_angle_deg">Total angle</option>
-              <option value="revolutions">Revolutions</option>
-            </select>
-          </div>
-          <canvas id="enc-chart" width="600" height="240"></canvas>
-        </div>
-      </div>
-    </div>
-  </div>
-  </div>
-
-  <p class="footer">AndPI5 · 192.168.0.103:5000</p>
+  <p class="footer">AndPI5 &middot; 192.168.0.103:5000</p>
 
   <script>
-    // ---------------- Stepper motor ----------------
-    let speedTimer = null;
+    // Motor definitions: id, friendly name, wiring note, and gear reduction.
+    const MOTORS = [
+      { id: 1, name: 'Motor 1', gear: 1, wiring: 'EN GPIO17 · STP GPIO27 · DIR GPIO22 · addr 0xE0 · direct drive' },
+      { id: 2, name: 'Motor 2', gear: 5, wiring: 'EN GPIO2 · STP GPIO3 · DIR GPIO4 · addr 0xE1 · 5:1 planetary' },
+    ];
 
-    function applyMotor(s) {
-      document.getElementById('dir-cw').classList.toggle('active', s.direction === 'cw');
-      document.getElementById('dir-ccw').classList.toggle('active', s.direction === 'ccw');
+    function unitHTML(m) {
+      const i = m.id;
+      return `
+      <div class="motor-unit">
+        <div class="unit-title">${m.name} <small>${m.wiring}</small></div>
+        <div class="motor-grid">
+          <div class="card">
+            <div class="card-title">Motor Control · NEMA 17</div>
+            <p class="motor-status">State: <span id="motor-state-${i}">Loading...</span></p>
+            <p class="motor-status" style="margin-top:-0.75rem;">
+              Live: <span id="live-rpm-${i}" style="color:#a0cfff;">0</span> RPM
+              (<span id="live-sps-${i}">0</span> sps)
+            </p>
 
-      document.getElementById('speed-slider').value = s.speed;
-      document.getElementById('speed-label').textContent = s.speed;
-      document.getElementById('rpm-label').textContent = s.rpm;
-      document.getElementById('fsteps-input').value = s.full_steps_per_rev;
-      document.getElementById('micro-input').value = s.microstepping;
+            <div class="control-row">
+              <label>Direction</label>
+              <div class="dir-toggle">
+                <button id="dir-cw-${i}"  onclick="setDirection(${i}, 'cw')">CW &#8635;</button>
+                <button id="dir-ccw-${i}" onclick="setDirection(${i}, 'ccw')">CCW &#8634;</button>
+              </div>
+            </div>
 
-      document.getElementById('accel-slider').value = s.accel;
-      document.getElementById('accel-label').textContent = s.accel;
-      updateLive(s);
+            <div class="control-row">
+              <label>Speed</label>
+              <span class="speed-value">
+                <span id="speed-label-${i}">400</span> sps
+                &middot; <span id="rpm-label-${i}">--</span> RPM
+              </span>
+            </div>
+            <input type="range" id="speed-slider-${i}" min="1" max="6000" value="400"
+                   oninput="onSpeedInput(${i}, this.value)" onchange="commitSpeed(${i}, this.value)" />
+
+            <div class="control-row" style="margin-top:1.25rem;">
+              <label>Acceleration</label>
+              <span class="speed-value"><span id="accel-label-${i}">4000</span> sps&sup2;</span>
+            </div>
+            <input type="range" id="accel-slider-${i}" min="100" max="50000" step="100" value="4000"
+                   oninput="onAccelInput(${i}, this.value)" onchange="commitAccel(${i}, this.value)" />
+
+            <div class="control-row" style="margin-top:1.25rem;">
+              <label>Target RPM</label>
+              <div style="display:flex; gap:0.5rem;">
+                <input type="number" id="rpm-input-${i}" class="num-input" min="0" step="0.1" value="0" />
+                <button class="dir-toggle" style="background:#4a78ff;color:#fff;padding:0.5rem 1rem;"
+                        onclick="setRpm(${i})">Set</button>
+              </div>
+            </div>
+
+            <div class="geometry">
+              <div class="control-row">
+                <label>Full steps / rev</label>
+                <input type="number" id="fsteps-input-${i}" class="num-input" min="1" value="200"
+                       onchange="setGeometry(${i})" />
+              </div>
+              <div class="control-row" style="margin-bottom:0;">
+                <label>Microstepping</label>
+                <select id="micro-input-${i}" class="num-input" onchange="setGeometry(${i})">
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="4">4</option>
+                  <option value="8">8</option>
+                  <option value="16" selected>16</option>
+                  <option value="32">32</option>
+                  <option value="64">64</option>
+                  <option value="128">128</option>
+                  <option value="256">256</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="buttons" style="display:flex; gap:1rem; justify-content:center; margin-top:1.75rem;">
+              <button class="btn-motor-off" onclick="softStop(${i})">Disable</button>
+              <button class="btn-motor-on"  onclick="setMotor(${i}, 'enable')">Enable</button>
+            </div>
+            <button class="btn-estop" onclick="hardStop(${i})">&#9888; EMERGENCY STOP</button>
+          </div>
+
+          <div class="card">
+            <div class="control-row" style="margin-bottom:1rem;">
+              <div class="card-title" style="margin-bottom:0;">
+                Encoder${m.gear !== 1 ? ' · output shaft' : ''} · SERVO42C (UART)
+                ${m.gear !== 1 ? `<span style="color:#5a6178;font-size:0.72rem;">${m.gear}:1</span>` : ''}
+              </div>
+              <span class="live-badge" id="enc-live-${i}">&#9679; LIVE</span>
+            </div>
+            <div class="encoder-layout">
+              <div class="encoder-readout">
+                <div class="rev-counter">
+                  <div class="rev-counter-head">
+                    <span class="rev-counter-k">Turns since reset</span>
+                    <button class="rev-reset-btn" onclick="resetTurns(${i})">Reset</button>
+                  </div>
+                  <div class="rev-counter-v"><span id="enc-turns-${i}">--</span></div>
+                </div>
+                <div class="enc-dial">
+                  <div class="enc-needle" id="enc-needle-${i}"></div>
+                  <div class="enc-hub"></div>
+                </div>
+                <div class="encoder-grid">
+                  <div class="enc-cell">
+                    <div class="enc-k">Shaft angle</div>
+                    <div class="enc-v"><span id="enc-angle-${i}">--</span>&deg;</div>
+                  </div>
+                  <div class="enc-cell">
+                    <div class="enc-k">Revolutions</div>
+                    <div class="enc-v" id="enc-revs-${i}">--</div>
+                  </div>
+                  <div class="enc-cell">
+                    <div class="enc-k">Total angle</div>
+                    <div class="enc-v"><span id="enc-total-${i}">--</span>&deg;</div>
+                  </div>
+                  <div class="enc-cell">
+                    <div class="enc-k">Raw value</div>
+                    <div class="enc-v" id="enc-raw-${i}">--</div>
+                  </div>
+                </div>
+                <p class="enc-error" id="enc-error-${i}"></p>
+              </div>
+              <div class="encoder-plot">
+                <div class="enc-chart-wrap">
+                  <div class="enc-chart-head">
+                    <span id="enc-chart-label-${i}">Shaft angle (&deg;) &middot; last 30 s</span>
+                    <select id="enc-chart-metric-${i}" onchange="resetChart(${i})">
+                      <option value="angle_deg">Shaft angle</option>
+                      <option value="total_angle_deg">Total angle</option>
+                      <option value="revolutions">Revolutions</option>
+                    </select>
+                  </div>
+                  <canvas id="enc-chart-${i}" width="600" height="240"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>`;
     }
 
-    function updateLive(s) {
-      const state = document.getElementById('motor-state');
+    // ---------------- Per-motor state ----------------
+    const ENC_WINDOW_MS = 30000;
+    const ENC_METRICS = {
+      angle_deg:       { label: 'Shaft angle (°) · last 30 s',  unit: '°' },
+      total_angle_deg: { label: 'Total angle (°) · last 30 s',  unit: '°' },
+      revolutions:     { label: 'Revolutions · last 30 s',      unit: '' },
+    };
+    const units = {};   // id -> { speedTimer, accelTimer, liveTimer, encSamples, turnsZero, lastRevolutions }
+
+    function el(name, i) { return document.getElementById(`${name}-${i}`); }
+
+    // ---------------- Stepper motor ----------------
+    function applyMotor(i, s) {
+      el('dir-cw', i).classList.toggle('active', s.direction === 'cw');
+      el('dir-ccw', i).classList.toggle('active', s.direction === 'ccw');
+      el('speed-slider', i).value = s.speed;
+      el('speed-label', i).textContent = s.speed;
+      el('rpm-label', i).textContent = s.rpm;
+      el('fsteps-input', i).value = s.full_steps_per_rev;
+      el('micro-input', i).value = s.microstepping;
+      el('accel-slider', i).value = s.accel;
+      el('accel-label', i).textContent = s.accel;
+      updateLive(i, s);
+    }
+
+    function updateLive(i, s) {
+      const state = el('motor-state', i);
       if (s.stopping) {
         state.textContent = 'STOPPING';
         state.style.color = '#ffb84a';
@@ -493,154 +487,106 @@
         state.textContent = 'STOPPED';
         state.style.color = '#e03e3e';
       }
-      document.getElementById('live-rpm').textContent = s.current_rpm;
-      document.getElementById('live-sps').textContent = s.current_speed;
-      // Keep polling while the motor is energized or ramping down.
-      updateLivePolling(s.enabled || s.stopping);
+      el('live-rpm', i).textContent = s.current_rpm;
+      el('live-sps', i).textContent = s.current_speed;
+      updateLivePolling(i, s.enabled || s.stopping);
     }
 
-    let liveTimer = null;
-    function updateLivePolling(running) {
-      if (running && liveTimer === null) {
-        liveTimer = setInterval(pollLive, 400);
-      } else if (!running && liveTimer !== null) {
-        clearInterval(liveTimer);
-        liveTimer = null;
+    function updateLivePolling(i, running) {
+      const u = units[i];
+      if (running && u.liveTimer === null) {
+        u.liveTimer = setInterval(() => pollLive(i), 400);
+      } else if (!running && u.liveTimer !== null) {
+        clearInterval(u.liveTimer);
+        u.liveTimer = null;
       }
     }
 
-    async function pollLive() {
-      const res = await fetch('/motor/status');
-      updateLive(await res.json());
+    async function pollLive(i) {
+      const res = await fetch(`/motor/${i}/status`);
+      updateLive(i, await res.json());
     }
 
-    async function fetchMotor() {
-      const res = await fetch('/motor/status');
-      applyMotor(await res.json());
+    async function fetchMotor(i) {
+      const res = await fetch(`/motor/${i}/status`);
+      applyMotor(i, await res.json());
     }
 
-    async function setMotor(action) {
-      const res = await fetch(`/motor/${action}`, { method: 'POST' });
-      applyMotor(await res.json());
+    async function setMotor(i, action) {
+      const res = await fetch(`/motor/${i}/${action}`, { method: 'POST' });
+      applyMotor(i, await res.json());
     }
 
-    async function softStop() {
-      const res = await fetch('/motor/disable', {
+    async function postJSON(i, path, body) {
+      const res = await fetch(`/motor/${i}/${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ soft: true })
+        body: JSON.stringify(body)
       });
-      applyMotor(await res.json());
+      applyMotor(i, await res.json());
     }
 
-    async function hardStop() {
-      const res = await fetch('/motor/disable', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ soft: false })
-      });
-      applyMotor(await res.json());
+    function softStop(i) { postJSON(i, 'disable', { soft: true }); }
+    function hardStop(i) { postJSON(i, 'disable', { soft: false }); }
+    function setDirection(i, dir) { postJSON(i, 'direction', { direction: dir }); }
+
+    function setRpm(i) {
+      const rpm = parseFloat(el('rpm-input', i).value) || 0;
+      postJSON(i, 'rpm', { rpm });
     }
 
-    async function setDirection(dir) {
-      const res = await fetch('/motor/direction', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ direction: dir })
-      });
-      applyMotor(await res.json());
+    function setGeometry(i) {
+      const full_steps_per_rev = parseInt(el('fsteps-input', i).value, 10) || 200;
+      const microstepping = parseInt(el('micro-input', i).value, 10) || 1;
+      postJSON(i, 'geometry', { full_steps_per_rev, microstepping });
     }
 
-    async function setRpm() {
-      const rpm = parseFloat(document.getElementById('rpm-input').value) || 0;
-      const res = await fetch('/motor/rpm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rpm })
-      });
-      applyMotor(await res.json());
+    function onSpeedInput(i, value) {
+      el('speed-label', i).textContent = value;
+      clearTimeout(units[i].speedTimer);
+      units[i].speedTimer = setTimeout(() => commitSpeed(i, value), 120);
+    }
+    function commitSpeed(i, value) {
+      clearTimeout(units[i].speedTimer);
+      postJSON(i, 'speed', { speed: parseInt(value, 10) });
     }
 
-    async function setGeometry() {
-      const full_steps_per_rev = parseInt(document.getElementById('fsteps-input').value, 10) || 200;
-      const microstepping = parseInt(document.getElementById('micro-input').value, 10) || 1;
-      const res = await fetch('/motor/geometry', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ full_steps_per_rev, microstepping })
-      });
-      applyMotor(await res.json());
+    function onAccelInput(i, value) {
+      el('accel-label', i).textContent = value;
+      clearTimeout(units[i].accelTimer);
+      units[i].accelTimer = setTimeout(() => commitAccel(i, value), 120);
+    }
+    function commitAccel(i, value) {
+      clearTimeout(units[i].accelTimer);
+      postJSON(i, 'accel', { accel: parseInt(value, 10) });
     }
 
-    function onSpeedInput(value) {
-      document.getElementById('speed-label').textContent = value;
-      clearTimeout(speedTimer);
-      speedTimer = setTimeout(() => commitSpeed(value), 120);
+    // ---------------- Encoder (always live) ----------------
+    function resetTurns(i) {
+      units[i].turnsZero = units[i].lastRevolutions;
+      el('enc-turns', i).textContent = '0.00';
     }
 
-    let accelTimer = null;
-    function onAccelInput(value) {
-      document.getElementById('accel-label').textContent = value;
-      clearTimeout(accelTimer);
-      accelTimer = setTimeout(() => commitAccel(value), 120);
+    function resetChart(i) {
+      units[i].encSamples = [];
+      const metric = el('enc-chart-metric', i).value;
+      el('enc-chart-label', i).textContent = ENC_METRICS[metric].label;
+      drawChart(i);
     }
 
-    async function commitAccel(value) {
-      clearTimeout(accelTimer);
-      const res = await fetch('/motor/accel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accel: parseInt(value, 10) })
-      });
-      applyMotor(await res.json());
-    }
-
-    async function commitSpeed(value) {
-      clearTimeout(speedTimer);
-      const res = await fetch('/motor/speed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ speed: parseInt(value, 10) })
-      });
-      applyMotor(await res.json());
-    }
-
-    // ----- Encoder (UART) — always live -----
-    const ENC_WINDOW_MS = 30000;           // 30 s rolling window
-    const ENC_METRICS = {
-      angle_deg:       { label: 'Shaft angle (°) · last 30 s',  unit: '°' },
-      total_angle_deg: { label: 'Total angle (°) · last 30 s',  unit: '°' },
-      revolutions:     { label: 'Revolutions · last 30 s',      unit: '' },
-    };
-    let encSamples = [];                    // { t, angle_deg, total_angle_deg, revolutions }
-    let turnsZero = null;                   // baseline revolutions for the "turns since reset" counter
-    let lastRevolutions = 0;
-
-    function resetTurns() {
-      turnsZero = lastRevolutions;
-      document.getElementById('enc-turns').textContent = '0.00';
-    }
-
-    function resetChart() {
-      encSamples = [];
-      const metric = document.getElementById('enc-chart-metric').value;
-      document.getElementById('enc-chart-label').textContent = ENC_METRICS[metric].label;
-      drawChart();
-    }
-
-    async function pollEncoder() {
+    async function pollEncoder(i) {
       try {
-        const res = await fetch('/motor/encoder');
-        const d = await res.json();
-        applyEncoder(d);
+        const res = await fetch(`/motor/${i}/encoder`);
+        applyEncoder(i, await res.json());
       } catch (e) {
-        document.getElementById('enc-error').textContent = 'request failed';
+        el('enc-error', i).textContent = 'request failed';
       }
     }
 
-    function applyEncoder(d) {
-      const err = document.getElementById('enc-error');
-      const badge = document.getElementById('enc-live');
+    function applyEncoder(i, d) {
+      const u = units[i];
+      const err = el('enc-error', i);
+      const badge = el('enc-live', i);
       if (!d.available || d.error) {
         err.textContent = !d.available
           ? 'UART not available: ' + (d.error || 'unknown')
@@ -652,47 +598,49 @@
       err.textContent = '';
       badge.classList.remove('stale');
       badge.textContent = '● LIVE';
-      lastRevolutions = d.revolutions;
-      if (turnsZero === null) turnsZero = d.revolutions;
-      document.getElementById('enc-turns').textContent =
-        (d.revolutions - turnsZero).toFixed(2);
-      document.getElementById('enc-angle').textContent = d.angle_deg.toFixed(1);
-      document.getElementById('enc-revs').textContent = d.revolutions.toFixed(3);
-      document.getElementById('enc-total').textContent = d.total_angle_deg.toFixed(1);
-      document.getElementById('enc-raw').textContent = d.value;
-      document.getElementById('enc-needle').style.transform =
-        `translate(-50%, -100%) rotate(${d.angle_deg}deg)`;
+      // Display the geared OUTPUT-shaft motion (equals motor shaft when 1:1).
+      const angle = d.output_angle_deg;
+      const totalAngle = d.output_total_angle_deg;
+      const revs = d.output_revolutions;
+      u.lastRevolutions = revs;
+      if (u.turnsZero === null) u.turnsZero = revs;
+      el('enc-turns', i).textContent = (revs - u.turnsZero).toFixed(2);
+      el('enc-angle', i).textContent = angle.toFixed(1);
+      el('enc-revs', i).textContent = revs.toFixed(3);
+      el('enc-total', i).textContent = totalAngle.toFixed(1);
+      el('enc-raw', i).textContent = d.value;
+      el('enc-needle', i).style.transform =
+        `translate(-50%, -100%) rotate(${angle}deg)`;
 
       const now = Date.now();
-      encSamples.push({
+      u.encSamples.push({
         t: now,
-        angle_deg: d.angle_deg,
-        total_angle_deg: d.total_angle_deg,
-        revolutions: d.revolutions,
+        angle_deg: angle,
+        total_angle_deg: totalAngle,
+        revolutions: revs,
       });
-      while (encSamples.length && now - encSamples[0].t > ENC_WINDOW_MS) {
-        encSamples.shift();
+      while (u.encSamples.length && now - u.encSamples[0].t > ENC_WINDOW_MS) {
+        u.encSamples.shift();
       }
-      drawChart();
+      drawChart(i);
     }
 
-    function drawChart() {
-      const canvas = document.getElementById('enc-chart');
+    function drawChart(i) {
+      const canvas = el('enc-chart', i);
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
       const W = canvas.width, H = canvas.height;
       const padL = 46, padR = 8, padT = 10, padB = 18;
-      const metric = document.getElementById('enc-chart-metric').value;
+      const metric = el('enc-chart-metric', i).value;
       const unit = ENC_METRICS[metric].unit;
+      const samples = units[i].encSamples;
 
       ctx.clearRect(0, 0, W, H);
-
-      // plot frame
       ctx.strokeStyle = '#2a2d3e';
       ctx.lineWidth = 1;
       ctx.strokeRect(padL, padT, W - padL - padR, H - padT - padB);
 
-      if (encSamples.length < 2) {
+      if (samples.length < 2) {
         ctx.fillStyle = '#5a6178';
         ctx.font = '14px sans-serif';
         ctx.textAlign = 'center';
@@ -703,7 +651,7 @@
       const now = Date.now();
       const tMin = now - ENC_WINDOW_MS, tMax = now;
       let vMin = Infinity, vMax = -Infinity;
-      for (const s of encSamples) {
+      for (const s of samples) {
         if (s[metric] < vMin) vMin = s[metric];
         if (s[metric] > vMax) vMax = s[metric];
       }
@@ -714,13 +662,12 @@
       const x = t => padL + (t - tMin) / (tMax - tMin) * (W - padL - padR);
       const y = v => padT + (1 - (v - vMin) / (vMax - vMin)) * (H - padT - padB);
 
-      // y-axis gridlines + labels
       ctx.fillStyle = '#9aa4bf';
       ctx.font = '11px sans-serif';
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
-      for (let i = 0; i <= 4; i++) {
-        const v = vMin + (vMax - vMin) * i / 4;
+      for (let k = 0; k <= 4; k++) {
+        const v = vMin + (vMax - vMin) * k / 4;
         const yy = y(v);
         ctx.strokeStyle = 'rgba(42,45,62,0.6)';
         ctx.beginPath();
@@ -730,7 +677,6 @@
         ctx.fillText(v.toFixed(unit === '' ? 2 : 0) + unit, padL - 4, yy);
       }
 
-      // x-axis time labels (seconds ago)
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       for (let s = 0; s <= 30; s += 10) {
@@ -738,29 +684,34 @@
         ctx.fillText('-' + s + 's', x(tt), H - padB + 4);
       }
 
-      // line
       ctx.strokeStyle = '#4a78ff';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      encSamples.forEach((s, i) => {
+      samples.forEach((s, k) => {
         const px = x(s.t), py = y(s[metric]);
-        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
       });
       ctx.stroke();
 
-      // last point marker
-      const last = encSamples[encSamples.length - 1];
+      const last = samples[samples.length - 1];
       ctx.fillStyle = '#a0cfff';
       ctx.beginPath();
       ctx.arc(x(last.t), y(last[metric]), 3, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    fetchMotor();
-
-    // Encoder is always live: poll continuously.
-    pollEncoder();
-    setInterval(pollEncoder, 300);
+    // ---------------- Init ----------------
+    const container = document.getElementById('units');
+    container.innerHTML = MOTORS.map(unitHTML).join('');
+    MOTORS.forEach(m => {
+      units[m.id] = {
+        speedTimer: null, accelTimer: null, liveTimer: null,
+        encSamples: [], turnsZero: null, lastRevolutions: 0,
+      };
+      fetchMotor(m.id);
+      pollEncoder(m.id);
+      setInterval(() => pollEncoder(m.id), 300);
+    });
   </script>
 </body>
 </html>
