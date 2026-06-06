@@ -1,0 +1,172 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="760" viewBox="0 0 1100 760" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="dot" markerWidth="8" markerHeight="8" refX="4" refY="4">
+      <circle cx="4" cy="4" r="3" fill="#222"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1100" height="760" fill="#ffffff"/>
+  <text x="550" y="34" text-anchor="middle" font-size="22" font-weight="700" fill="#1a1a1a">
+    SERVO42C Multi-Drop UART Bus &#8212; 4 Drivers (Option A)
+  </text>
+  <text x="550" y="56" text-anchor="middle" font-size="13" fill="#666">
+    9600 baud &#183; addresses 0xE0&#8211;0xE3 &#183; only the addressed driver replies
+  </text>
+
+  <!-- ================= Raspberry Pi ================= -->
+  <rect x="40" y="120" width="200" height="270" rx="12" fill="#1f6f43" stroke="#0f3d24" stroke-width="2"/>
+  <text x="140" y="150" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">Raspberry Pi 5</text>
+
+  <!-- Pi pin pads -->
+  <g font-size="13" fill="#ffffff">
+    <rect x="210" y="178" width="30" height="20" fill="#0f3d24"/>
+    <text x="200" y="193" text-anchor="end">3V3</text>
+    <rect x="210" y="228" width="30" height="20" fill="#0f3d24"/>
+    <text x="200" y="243" text-anchor="end">TXD (GPIO14)</text>
+    <rect x="210" y="278" width="30" height="20" fill="#0f3d24"/>
+    <text x="200" y="293" text-anchor="end">RXD (GPIO15)</text>
+    <rect x="210" y="338" width="30" height="20" fill="#0f3d24"/>
+    <text x="200" y="353" text-anchor="end">GND</text>
+  </g>
+
+  <!-- ================= Bus rails ================= -->
+  <!-- TX rail (Pi TXD -> all driver Rx) : red -->
+  <text x="300" y="225" font-size="12" fill="#c0392b" font-weight="700">TX rail (Pi&#8594;drivers)</text>
+  <line x1="240" y1="238" x2="300" y2="238" stroke="#c0392b" stroke-width="2.5"/>
+  <line x1="300" y1="186" x2="300" y2="700" stroke="#c0392b" stroke-width="2.5"/>
+
+  <!-- RX rail (all driver Tx -> Pi RXD) : blue -->
+  <text x="360" y="312" font-size="12" fill="#2471a3" font-weight="700">RX rail (drivers&#8594;Pi)</text>
+  <line x1="240" y1="288" x2="360" y2="288" stroke="#2471a3" stroke-width="2.5"/>
+  <line x1="360" y1="208" x2="360" y2="700" stroke="#2471a3" stroke-width="2.5"/>
+
+  <!-- GND rail : black -->
+  <text x="420" y="372" font-size="12" fill="#333" font-weight="700">GND (common)</text>
+  <line x1="240" y1="348" x2="420" y2="348" stroke="#222" stroke-width="2.5"/>
+  <line x1="420" y1="230" x2="420" y2="700" stroke="#222" stroke-width="2.5"/>
+
+  <!-- ================= 4 Drivers ================= -->
+  <!-- driver template positions -->
+  <!-- columns: Rx tap at x=300, Tx tap at x=360, GND tap at x=420 -->
+  <g>
+    <!-- Driver Y positions -->
+    <!-- D1 -->
+    <g>
+      <rect x="700" y="120" width="220" height="120" rx="10" fill="#16202b" stroke="#0b1118" stroke-width="2"/>
+      <text x="810" y="146" text-anchor="middle" font-size="15" font-weight="700" fill="#a0cfff">SERVO42C #1</text>
+      <text x="810" y="166" text-anchor="middle" font-size="12" fill="#7f8c9b">Motor 1 &#183; addr 0xE0</text>
+      <!-- pads -->
+      <rect x="680" y="178" width="20" height="16" fill="#0b1118"/>
+      <text x="710" y="191" font-size="12" fill="#cfd6ee">Rx</text>
+      <rect x="680" y="200" width="20" height="16" fill="#0b1118"/>
+      <text x="710" y="213" font-size="12" fill="#cfd6ee">Tx</text>
+      <rect x="680" y="222" width="20" height="16" fill="#0b1118"/>
+      <text x="710" y="235" font-size="12" fill="#cfd6ee">G</text>
+      <!-- Rx connection (direct from TX rail) -->
+      <line x1="300" y1="186" x2="680" y2="186" stroke="#c0392b" stroke-width="2"/>
+      <circle cx="300" cy="186" r="3.5" fill="#c0392b"/>
+      <!-- Tx connection with series resistor to RX rail -->
+      <line x1="600" y1="208" x2="680" y2="208" stroke="#2471a3" stroke-width="2"/>
+      <rect x="540" y="200" width="50" height="16" fill="#fff" stroke="#2471a3" stroke-width="2"/>
+      <text x="565" y="196" text-anchor="middle" font-size="10" fill="#1a5276">1k&#937;</text>
+      <line x1="360" y1="208" x2="540" y2="208" stroke="#2471a3" stroke-width="2"/>
+      <circle cx="360" cy="208" r="3.5" fill="#2471a3"/>
+      <!-- GND -->
+      <line x1="420" y1="230" x2="680" y2="230" stroke="#222" stroke-width="2"/>
+      <circle cx="420" cy="230" r="3.5" fill="#222"/>
+    </g>
+
+    <!-- D2 -->
+    <g>
+      <rect x="700" y="260" width="220" height="120" rx="10" fill="#16202b" stroke="#0b1118" stroke-width="2"/>
+      <text x="810" y="286" text-anchor="middle" font-size="15" font-weight="700" fill="#a0cfff">SERVO42C #2</text>
+      <text x="810" y="306" text-anchor="middle" font-size="12" fill="#7f8c9b">Motor 2 &#183; addr 0xE1</text>
+      <rect x="680" y="318" width="20" height="16" fill="#0b1118"/>
+      <text x="710" y="331" font-size="12" fill="#cfd6ee">Rx</text>
+      <rect x="680" y="340" width="20" height="16" fill="#0b1118"/>
+      <text x="710" y="353" font-size="12" fill="#cfd6ee">Tx</text>
+      <rect x="680" y="362" width="20" height="16" fill="#0b1118"/>
+      <text x="710" y="375" font-size="12" fill="#cfd6ee">G</text>
+      <line x1="300" y1="326" x2="680" y2="326" stroke="#c0392b" stroke-width="2"/>
+      <circle cx="300" cy="326" r="3.5" fill="#c0392b"/>
+      <line x1="600" y1="348" x2="680" y2="348" stroke="#2471a3" stroke-width="2"/>
+      <rect x="540" y="340" width="50" height="16" fill="#fff" stroke="#2471a3" stroke-width="2"/>
+      <text x="565" y="336" text-anchor="middle" font-size="10" fill="#1a5276">1k&#937;</text>
+      <line x1="360" y1="348" x2="540" y2="348" stroke="#2471a3" stroke-width="2"/>
+      <circle cx="360" cy="348" r="3.5" fill="#2471a3"/>
+      <line x1="420" y1="370" x2="680" y2="370" stroke="#222" stroke-width="2"/>
+      <circle cx="420" cy="370" r="3.5" fill="#222"/>
+    </g>
+
+    <!-- D3 -->
+    <g>
+      <rect x="700" y="400" width="220" height="120" rx="10" fill="#16202b" stroke="#0b1118" stroke-width="2"/>
+      <text x="810" y="426" text-anchor="middle" font-size="15" font-weight="700" fill="#a0cfff">SERVO42C #3</text>
+      <text x="810" y="446" text-anchor="middle" font-size="12" fill="#7f8c9b">Motor 3 &#183; addr 0xE2</text>
+      <rect x="680" y="458" width="20" height="16" fill="#0b1118"/>
+      <text x="710" y="471" font-size="12" fill="#cfd6ee">Rx</text>
+      <rect x="680" y="480" width="20" height="16" fill="#0b1118"/>
+      <text x="710" y="493" font-size="12" fill="#cfd6ee">Tx</text>
+      <rect x="680" y="502" width="20" height="16" fill="#0b1118"/>
+      <text x="710" y="515" font-size="12" fill="#cfd6ee">G</text>
+      <line x1="300" y1="466" x2="680" y2="466" stroke="#c0392b" stroke-width="2"/>
+      <circle cx="300" cy="466" r="3.5" fill="#c0392b"/>
+      <line x1="600" y1="488" x2="680" y2="488" stroke="#2471a3" stroke-width="2"/>
+      <rect x="540" y="480" width="50" height="16" fill="#fff" stroke="#2471a3" stroke-width="2"/>
+      <text x="565" y="476" text-anchor="middle" font-size="10" fill="#1a5276">1k&#937;</text>
+      <line x1="360" y1="488" x2="540" y2="488" stroke="#2471a3" stroke-width="2"/>
+      <circle cx="360" cy="488" r="3.5" fill="#2471a3"/>
+      <line x1="420" y1="510" x2="680" y2="510" stroke="#222" stroke-width="2"/>
+      <circle cx="420" cy="510" r="3.5" fill="#222"/>
+    </g>
+
+    <!-- D4 -->
+    <g>
+      <rect x="700" y="540" width="220" height="120" rx="10" fill="#16202b" stroke="#0b1118" stroke-width="2"/>
+      <text x="810" y="566" text-anchor="middle" font-size="15" font-weight="700" fill="#a0cfff">SERVO42C #4</text>
+      <text x="810" y="586" text-anchor="middle" font-size="12" fill="#7f8c9b">Motor 4 &#183; addr 0xE3</text>
+      <rect x="680" y="598" width="20" height="16" fill="#0b1118"/>
+      <text x="710" y="611" font-size="12" fill="#cfd6ee">Rx</text>
+      <rect x="680" y="620" width="20" height="16" fill="#0b1118"/>
+      <text x="710" y="633" font-size="12" fill="#cfd6ee">Tx</text>
+      <rect x="680" y="642" width="20" height="16" fill="#0b1118"/>
+      <text x="710" y="655" font-size="12" fill="#cfd6ee">G</text>
+      <line x1="300" y1="606" x2="680" y2="606" stroke="#c0392b" stroke-width="2"/>
+      <circle cx="300" cy="606" r="3.5" fill="#c0392b"/>
+      <line x1="600" y1="628" x2="680" y2="628" stroke="#2471a3" stroke-width="2"/>
+      <rect x="540" y="620" width="50" height="16" fill="#fff" stroke="#2471a3" stroke-width="2"/>
+      <text x="565" y="616" text-anchor="middle" font-size="10" fill="#1a5276">1k&#937;</text>
+      <line x1="360" y1="628" x2="540" y2="628" stroke="#2471a3" stroke-width="2"/>
+      <circle cx="360" cy="628" r="3.5" fill="#2471a3"/>
+      <line x1="420" y1="650" x2="680" y2="650" stroke="#222" stroke-width="2"/>
+      <circle cx="420" cy="650" r="3.5" fill="#222"/>
+    </g>
+  </g>
+
+  <!-- ================= Legend ================= -->
+  <g>
+    <rect x="40" y="430" width="240" height="230" rx="10" fill="#f7f9fb" stroke="#cdd6df" stroke-width="1.5"/>
+    <text x="60" y="458" font-size="14" font-weight="700" fill="#1a1a1a">Legend / Notes</text>
+
+    <line x1="60" y1="478" x2="100" y2="478" stroke="#c0392b" stroke-width="3"/>
+    <text x="108" y="482" font-size="12" fill="#333">Pi TXD &#8594; every driver Rx (direct)</text>
+
+    <line x1="60" y1="502" x2="100" y2="502" stroke="#2471a3" stroke-width="3"/>
+    <text x="108" y="506" font-size="12" fill="#333">Driver Tx &#8594; Pi RXD (via 1k&#937;)</text>
+
+    <line x1="60" y1="526" x2="100" y2="526" stroke="#222" stroke-width="3"/>
+    <text x="108" y="530" font-size="12" fill="#333">Common ground (required)</text>
+
+    <text x="60" y="560" font-size="11.5" fill="#555">&#8226; 1k&#937; series on each Tx limits</text>
+    <text x="72" y="576" font-size="11.5" fill="#555">contention if two ever drive.</text>
+    <text x="60" y="594" font-size="11.5" fill="#555">&#8226; No pull-up: SERVO42C idles</text>
+    <text x="72" y="610" font-size="11.5" fill="#555">Tx HIGH, so line stays defined.</text>
+    <text x="60" y="628" font-size="11.5" fill="#555">&#8226; Diodes NOT required at 9600</text>
+    <text x="72" y="644" font-size="11.5" fill="#555">baud with addressed protocol.</text>
+  </g>
+
+  <!-- Optional diode variant callout -->
+  <g>
+    <rect x="40" y="120" width="0" height="0"/>
+  </g>
+</svg>

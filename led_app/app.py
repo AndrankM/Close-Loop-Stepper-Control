@@ -44,6 +44,8 @@ def read_brightness():
 # NEMA 17 + MKS SERVO42C stepper control
 #   Motor 1:  EN -> GPIO 17   STP -> GPIO 27   DIR -> GPIO 22
 #   Motor 2:  EN -> GPIO 2    STP -> GPIO 3    DIR -> GPIO 4
+#   Motor 3:  EN -> GPIO 10   STP -> GPIO 9    DIR -> GPIO 11
+#   Motor 4:  EN -> GPIO 0    STP -> GPIO 5    DIR -> GPIO 6
 #   (EN is active-LOW on the SERVO42C)
 # ---------------------------------------------------------------------------
 EN_PIN = 17
@@ -54,11 +56,22 @@ EN2_PIN = 2
 STP2_PIN = 3
 DIR2_PIN = 4
 
+EN3_PIN = 10
+STP3_PIN = 9
+DIR3_PIN = 11
+
+EN4_PIN = 0
+STP4_PIN = 5
+DIR4_PIN = 6
+
 # Gearbox reduction (motor revs : output revs). Motor 1 is direct-drive;
 # motor 2 has a 5:1 planetary reducer, so its output shaft turns 5x slower
 # than the motor shaft (and the encoder, which sits on the motor shaft).
+# Motors 3 and 4 default to direct-drive (1:1); change if they have reducers.
 MOTOR1_GEAR_RATIO = 1.0
 MOTOR2_GEAR_RATIO = 5.0
+MOTOR3_GEAR_RATIO = 1.0
+MOTOR4_GEAR_RATIO = 1.0
 
 # Driver enable pin is active-LOW: drive LOW to energize the coils.
 EN_ACTIVE_LOW = True
@@ -284,6 +297,8 @@ class StepperMotor:
 motors = {
     1: StepperMotor(EN_PIN, STP_PIN, DIR_PIN, MOTOR1_GEAR_RATIO),
     2: StepperMotor(EN2_PIN, STP2_PIN, DIR2_PIN, MOTOR2_GEAR_RATIO),
+    3: StepperMotor(EN3_PIN, STP3_PIN, DIR3_PIN, MOTOR3_GEAR_RATIO),
+    4: StepperMotor(EN4_PIN, STP4_PIN, DIR4_PIN, MOTOR4_GEAR_RATIO),
 }
 
 
@@ -306,6 +321,8 @@ SERIAL_PORT = os.environ.get("SERVO_UART", "/dev/serial0")
 SERIAL_BAUD = int(os.environ.get("SERVO_BAUD", "9600"))
 MOTOR1_ADDR = int(os.environ.get("SERVO_ADDR", "0xe0"), 0)
 MOTOR2_ADDR = int(os.environ.get("SERVO_ADDR2", "0xe1"), 0)
+MOTOR3_ADDR = int(os.environ.get("SERVO_ADDR3", "0xe2"), 0)
+MOTOR4_ADDR = int(os.environ.get("SERVO_ADDR4", "0xe3"), 0)
 ENCODER_COUNTS_PER_REV = 65536  # 0~0xFFFF maps to 0~360 degrees
 READ_ENCODER_CMD = 0x30
 
@@ -396,6 +413,8 @@ class EncoderReader:
 encoders = {
     1: EncoderReader(MOTOR1_ADDR, MOTOR1_GEAR_RATIO),
     2: EncoderReader(MOTOR2_ADDR, MOTOR2_GEAR_RATIO),
+    3: EncoderReader(MOTOR3_ADDR, MOTOR3_GEAR_RATIO),
+    4: EncoderReader(MOTOR4_ADDR, MOTOR4_GEAR_RATIO),
 }
 
 
