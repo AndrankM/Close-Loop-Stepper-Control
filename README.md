@@ -1,6 +1,6 @@
 # Closed-Loop Stepper Control
 
-A Raspberry Pi 5 web application for driving **two NEMA 17** stepper motors through
+A Raspberry Pi 5 web application for driving **four NEMA 17** stepper motors through
 **MKS SERVO42C** drivers, with **live closed-loop feedback** from each driver's
 built-in magnetic encoder over a shared UART bus.
 
@@ -9,20 +9,21 @@ encoders over the serial port. A single-page dashboard provides per-motor motion
 control plus a live encoder readout — angle dial, rotation counter, and a real-time
 chart — for each motor.
 
-One motor is direct-drive; the other runs through a **5:1 planetary reducer**, and
+Most motors are direct-drive; motor 2 runs through a **5:1 planetary reducer**, and
 the app reports its RPM and rotation relative to the geared output shaft.
 
 ## Features
 
-- **Two independent motors** — each with its own control card and live encoder card.
+- **Four independent motors** — each with its own control card and live encoder card.
 - **Motor control** — enable/disable, direction (CW/CCW), speed (steps/s), and
   target RPM.
 - **Hardware-timed step pulses** — step signals are generated with hardware PWM
   (frequency = step rate), giving accurate, linear speed control up to 6000 steps/s.
 - **Acceleration ramp** — smooth ramp toward the target speed with a configurable
   acceleration (steps/s²).
-- **Gear-ratio aware** — motor 2's 5:1 planetary reducer is applied so RPM and
-  encoder turns/angle are reported at the **output shaft**.
+- **Gear-ratio aware** — per-motor gear ratios (e.g. motor 2's 5:1 planetary
+  reducer) are applied so RPM and encoder turns/angle are reported at the
+  **output shaft**.
 - **Soft stop & emergency stop** — ramp-down disable or immediate de-energize.
 - **RPM from geometry** — converts steps/s ↔ RPM using full steps/rev and
   microstepping settings.
@@ -44,15 +45,17 @@ the app reports its RPM and rotation relative to the geared output shaft.
 | ----- | ---------------- | ------- | ------- | ------- |
 | 1     | Direct (1:1)     | GPIO 17 | GPIO 27 | GPIO 22 |
 | 2     | 5:1 planetary    | GPIO 2  | GPIO 3  | GPIO 4  |
+| 3     | Direct (1:1)     | GPIO 10 | GPIO 9  | GPIO 11 |
+| 4     | Direct (1:1)     | GPIO 0  | GPIO 5  | GPIO 6  |
 
 `EN` is active-LOW on the SERVO42C; each motor's `GND` ties to the Pi `GND`.
 
 ### Encoder feedback (shared UART / TTL bus)
 
-Both drivers share one Pi UART in a multi-drop arrangement (Option A). Each driver
+All drivers share one Pi UART in a multi-drop arrangement (Option A). Each driver
 has a distinct address so only the addressed motor replies.
 
-| Pi            | Pin             | SERVO42C (both) |
+| Pi            | Pin             | SERVO42C (all)  |
 | ------------- | --------------- | --------------- |
 | TXD (GPIO 14) | physical pin 8  | Rx              |
 | RXD (GPIO 15) | physical pin 10 | Tx              |
@@ -60,13 +63,16 @@ has a distinct address so only the addressed motor replies.
 
 Leave each SERVO42C `3V3` pin unconnected.
 
-SERVO42C UART defaults used here: **9600 baud**; **motor 1 = address `0xE0`** (OLED
-slot `0`), **motor 2 = address `0xE1`** (OLED slot `1`). Set the matching baud and
-address on each driver's OLED menu.
+SERVO42C UART defaults used here: **9600 baud**; addresses **`0xE0`–`0xE3`** for
+motors 1–4 (OLED address slots `0`–`3`). Set the matching baud and address on each
+driver's OLED menu.
 
-> **Shared-bus tip:** if multiple drivers drive the same Rx line, add a small
-> series resistor (~1 kΩ) on each driver's Tx to avoid contention, and make sure all
-> drivers share a common ground with the Pi.
+A wiring diagram for the four-driver bus is in
+[`docs/uart_bus_4_drivers.svg`](docs/uart_bus_4_drivers.svg).
+
+> **Shared-bus tip:** put a small series resistor (~1 kΩ) on each driver's Tx to
+> avoid contention on the shared Rx line, and make sure all drivers share a common
+> ground with the Pi. A pull-up is optional — the SERVO42C idles its Tx HIGH.
 
 > On the **Raspberry Pi 5**, the GPIO 14/15 UART must be enabled and freed from the
 > serial console — see Setup below. Without this, `/dev/serial0` points at the
@@ -141,10 +147,12 @@ The serial settings can be overridden with environment variables:
 | `SERVO_BAUD`  | `9600`         | UART baud rate                    |
 | `SERVO_ADDR`  | `0xe0`         | Motor 1 SERVO42C address byte     |
 | `SERVO_ADDR2` | `0xe1`         | Motor 2 SERVO42C address byte     |
+| `SERVO_ADDR3` | `0xe2`         | Motor 3 SERVO42C address byte     |
+| `SERVO_ADDR4` | `0xe3`         | Motor 4 SERVO42C address byte     |
 
 ## API
 
-Routes are parameterized by motor id (`<mid>` = `1` or `2`).
+Routes are parameterized by motor id (`<mid>` = `1`–`4`).
 
 | Method | Route                     | Description                                 |
 | ------ | ------------------------- | ------------------------------------------- |
