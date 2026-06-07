@@ -60,9 +60,9 @@ EN3_PIN = 10
 STP3_PIN = 9
 DIR3_PIN = 11
 
-EN4_PIN = 0
-STP4_PIN = 5
-DIR4_PIN = 6
+EN4_PIN = 16
+STP4_PIN = 20
+DIR4_PIN = 21
 
 # Gearbox reduction (motor revs : output revs). Motor 1 is direct-drive;
 # motor 2 has a 5:1 planetary reducer, so its output shaft turns 5x slower
@@ -334,7 +334,7 @@ if not SERIAL_AVAILABLE:
     _serial_error = "pyserial not installed"
 else:
     try:
-        _serial_conn = serial.Serial(SERIAL_PORT, SERIAL_BAUD, timeout=0.2)
+        _serial_conn = serial.Serial(SERIAL_PORT, SERIAL_BAUD, timeout=0.05)
     except Exception as exc:  # port missing / permission denied
         _serial_error = str(exc)
 
@@ -363,14 +363,18 @@ class EncoderReader:
             try:
                 _serial_conn.reset_input_buffer()
                 _serial_conn.write(packet)
-                # Accumulate until 8 bytes arrive or the deadline passes, so a
-                # short per-read timeout doesn't truncate a slow reply.
+                # An 8-byte reply at 9600 baud takes ~8 ms; keep the deadline
+                # short so a non-responding driver fails fast instead of
+                # holding the shared lock (and starving control requests).
                 resp = bytearray()
-                deadline = time.time() + 0.5
+                deadline = time.time() + 0.12
                 while len(resp) < 8 and time.time() < deadline:
                     chunk = _serial_conn.read(8 - len(resp))
                     if chunk:
                         resp.extend(chunk)
+                    elif resp:
+                        # Got a partial frame then a gap: reply is done/short.
+                        break
                 resp = bytes(resp)
             except Exception as exc:
                 return {"available": True, "error": str(exc)}
@@ -561,7 +565,9 @@ def motor_encoder(mid):
 
 if __name__ == "__main__":
     try:
-        app.run(host="0.0.0.0", port=5000)
+        # threaded=True so a slow encoder read on the shared UART bus never
+        # blocks motor enable/disable/status requests.
+        app.run(host="0.0.0.0", port=5000, threaded=True)
     finally:
         for _m in motors.values():
             _m.disable(soft=False)

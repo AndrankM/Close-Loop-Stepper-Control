@@ -12,12 +12,12 @@
       background: #0f1117;
       color: #e0e0e0;
       min-height: 100vh;
-      padding: 2.5rem 1.5rem 3rem;
+      padding: 1.4rem 1.25rem 2rem;
     }
 
     .page-header {
       text-align: center;
-      margin-bottom: 2.25rem;
+      margin-bottom: 1.25rem;
     }
     .page-header h1 { margin-bottom: 0.4rem; }
     .page-header .sub {
@@ -34,45 +34,60 @@
     }
 
     .units {
-      max-width: 1180px;
+      max-width: 1720px;
       margin: 0 auto;
-      display: flex;
-      flex-direction: column;
-      gap: 2.25rem;
-    }
-    .unit-title {
-      font-size: 1.15rem;
-      color: #cfd6ee;
-      letter-spacing: 0.05em;
-      margin-bottom: 1rem;
-      padding-bottom: 0.5rem;
-      border-bottom: 1px solid #2a2d3e;
-    }
-    .unit-title small { color: #5a6178; font-size: 0.78rem; letter-spacing: 0.04em; }
-
-    .motor-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 1.5rem;
-      align-items: stretch;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.25rem;
     }
-
-    .card {
+    @media (max-width: 1180px) {
+      .units { grid-template-columns: 1fr; }
+    }
+    .motor-unit {
       background: #1a1d27;
       border: 1px solid #2a2d3e;
-      border-radius: 16px;
-      padding: 2rem 2.25rem;
-      text-align: center;
+      border-radius: 14px;
+      padding: 1.1rem 1.35rem 1.35rem;
       box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      display: flex;
+      flex-direction: column;
+    }
+    .unit-title {
+      font-size: 1.05rem;
+      color: #cfd6ee;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.85rem;
+      padding-bottom: 0.45rem;
+      border-bottom: 1px solid #2a2d3e;
+    }
+    .unit-title small { color: #5a6178; font-size: 0.74rem; letter-spacing: 0.04em; }
+
+    .unit-body {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 1.1rem;
+      align-items: stretch;
+      flex: 1;
+    }
+    @media (max-width: 760px) {
+      .unit-body { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: #161922;
+      border: 1px solid #242838;
+      border-radius: 12px;
+      padding: 1.05rem 1.2rem;
+      text-align: center;
       width: 100%;
       display: flex;
       flex-direction: column;
     }
     .card-title {
-      font-size: 1.05rem;
+      font-size: 0.98rem;
       letter-spacing: 0.04em;
       color: #a0cfff;
-      margin-bottom: 1.25rem;
+      margin-bottom: 0.9rem;
       text-align: left;
     }
 
@@ -90,8 +105,8 @@
 
     /* --- Stepper motor card --- */
     .motor-status {
-      font-size: 1.1rem;
-      margin-bottom: 1.5rem;
+      font-size: 0.95rem;
+      margin-bottom: 0.55rem;
       color: #888;
     }
     .motor-status span { font-weight: bold; }
@@ -100,7 +115,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 1.25rem;
+      margin-bottom: 0.85rem;
       gap: 0.75rem;
     }
     .control-row label {
@@ -137,8 +152,8 @@
     }
     .geometry {
       border-top: 1px solid #2a2d3e;
-      margin-top: 1.25rem;
-      padding-top: 1.25rem;
+      margin-top: 0.9rem;
+      padding-top: 0.9rem;
     }
 
     .btn-motor-on  { background: #00cc66; color: #000; }
@@ -173,8 +188,8 @@
       color: #a0cfff;
     }
     .enc-dial {
-      width: 90px; height: 90px;
-      margin: 0.25rem auto 0.75rem;
+      width: 74px; height: 74px;
+      margin: 0.2rem auto 0.6rem;
       border-radius: 50%;
       border: 3px solid #2a2d3e;
       position: relative;
@@ -183,7 +198,7 @@
     .enc-needle {
       position: absolute;
       left: 50%; top: 50%;
-      width: 3px; height: 38px;
+      width: 3px; height: 30px;
       background: #4a78ff;
       transform-origin: bottom center;
       transform: translate(-50%, -100%) rotate(0deg);
@@ -243,7 +258,7 @@
     }
     .rev-reset-btn:hover { background: #353952; }
     .rev-counter-v {
-      font-size: 2.4rem;
+      font-size: 1.9rem;
       font-weight: 800;
       color: #a0cfff;
       font-variant-numeric: tabular-nums;
@@ -279,17 +294,17 @@
       display: grid;
       grid-template-columns: 1fr;
       grid-template-rows: auto 1fr;
-      gap: 1.25rem;
+      gap: 0.85rem;
       align-items: stretch;
       flex: 1;
     }
     .encoder-readout { text-align: center; }
     .encoder-plot { display: flex; flex-direction: column; min-height: 0; }
     .encoder-plot .enc-chart-wrap { display: flex; flex-direction: column; flex: 1; }
-    .encoder-plot canvas { width: 100%; height: auto; flex: 1; min-height: 200px; display: block; }
+    .encoder-plot canvas { width: 100%; height: auto; flex: 1; min-height: 130px; display: block; }
 
     .footer {
-      margin-top: 2.5rem;
+      margin-top: 1.5rem;
       text-align: center;
       font-size: 0.78rem;
       color: #444;
@@ -299,12 +314,12 @@
 <body>
   <div class="page-header">
     <h1>Closed-Loop Stepper Control</h1>
-    <div class="sub">2&times; NEMA 17 &middot; MKS SERVO42C</div>
+    <div class="sub">4&times; NEMA 17 &middot; MKS SERVO42C</div>
   </div>
 
   <div class="units" id="units"></div>
 
-  <p class="footer">AndPI5 &middot; 192.168.0.103:5000</p>
+  <p class="footer">AndPI5 &middot; 192.168.0.101:5000</p>
 
   <script>
     // Motor definitions: id, friendly name, wiring note, and gear reduction.
@@ -312,7 +327,7 @@
       { id: 1, name: 'Motor 1', gear: 1, wiring: 'EN GPIO17 · STP GPIO27 · DIR GPIO22 · addr 0xE0 · direct drive' },
       { id: 2, name: 'Motor 2', gear: 5, wiring: 'EN GPIO2 · STP GPIO3 · DIR GPIO4 · addr 0xE1 · 5:1 planetary' },
       { id: 3, name: 'Motor 3', gear: 1, wiring: 'EN GPIO10 · STP GPIO9 · DIR GPIO11 · addr 0xE2 · direct drive' },
-      { id: 4, name: 'Motor 4', gear: 1, wiring: 'EN GPIO0 · STP GPIO5 · DIR GPIO6 · addr 0xE3 · direct drive' },
+      { id: 4, name: 'Motor 4', gear: 1, wiring: 'EN GPIO16 · STP GPIO20 · DIR GPIO21 · addr 0xE3 · direct drive' },
     ];
 
     function unitHTML(m) {
@@ -320,8 +335,8 @@
       return `
       <div class="motor-unit">
         <div class="unit-title">${m.name} <small>${m.wiring}</small></div>
-        <div class="motor-grid">
-          <div class="card">
+        <div class="unit-body">
+          <div class="panel">
             <div class="card-title">Motor Control · NEMA 17</div>
             <p class="motor-status">State: <span id="motor-state-${i}">Loading...</span></p>
             <p class="motor-status" style="margin-top:-0.75rem;">
@@ -385,14 +400,14 @@
               </div>
             </div>
 
-            <div class="buttons" style="display:flex; gap:1rem; justify-content:center; margin-top:1.75rem;">
+            <div class="buttons" style="display:flex; gap:1rem; justify-content:center; margin-top:1.1rem;">
               <button class="btn-motor-off" onclick="softStop(${i})">Disable</button>
               <button class="btn-motor-on"  onclick="setMotor(${i}, 'enable')">Enable</button>
             </div>
             <button class="btn-estop" onclick="hardStop(${i})">&#9888; EMERGENCY STOP</button>
           </div>
 
-          <div class="card">
+          <div class="panel">
             <div class="control-row" style="margin-bottom:1rem;">
               <div class="card-title" style="margin-bottom:0;">
                 Encoder${m.gear !== 1 ? ' · output shaft' : ''} · SERVO42C (UART)
@@ -711,8 +726,15 @@
         encSamples: [], turnsZero: null, lastRevolutions: 0,
       };
       fetchMotor(m.id);
-      pollEncoder(m.id);
-      setInterval(() => pollEncoder(m.id), 300);
+      // Self-scheduling poll: wait for each request to finish before issuing
+      // the next, so slow/non-responding encoders can't flood the server and
+      // exhaust the browser's connection pool (which would also stall the
+      // motor control requests). Stagger motors so they don't all fire at once.
+      const ENC_POLL_MS = 500;
+      const scheduleEncoder = () => {
+        pollEncoder(m.id).finally(() => setTimeout(scheduleEncoder, ENC_POLL_MS));
+      };
+      setTimeout(scheduleEncoder, m.id * 120);
     });
   </script>
 </body>
