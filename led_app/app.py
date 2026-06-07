@@ -1,4 +1,6 @@
 import os
+import json
+import re
 import threading
 import time
 
@@ -94,6 +96,24 @@ MIN_ACCEL = 100
 MAX_ACCEL = 50000
 DEFAULT_ACCEL = 4000
 
+# ---------------------------------------------------------------------------
+# Closed-loop positioning (teach & playback)
+#   Encoder is 65536 counts / motor revolution. The controller drives each
+#   joint toward a recorded encoder count and stops within a tolerance band.
+# ---------------------------------------------------------------------------
+POS_TOLERANCE_COUNTS = 60       # ~0.33 deg at 65536 counts/rev
+POS_TIMEOUT_S = 20.0            # max time to reach one waypoint per joint
+POS_APPROACH_MIN_SPS = 40      # floor speed so the joint keeps creeping in
+POS_KP = 0.6                   # proportional gain: steps/sec per count error
+POS_SAFE_SPS = 400             # speed cap until move direction is confirmed
+PROGRAMS_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "programs"
+)
+
+
+def _clamp(value, lo, hi):
+    return max(lo, min(hi, value))
+
 
 class StepperMotor:
     """Generates step pulses on a background thread while the motor is enabled."""
@@ -111,6 +131,9 @@ class StepperMotor:
         self.gear_ratio = float(gear_ratio) or 1.0  # motor revs : output revs
         self._stop = threading.Event()
         self._soft_stop = threading.Event()
+        # When set, the worker keeps the coils energized but emits no pulses
+        # (used to HOLD a position during closed-loop moves / playback).
+        self._pause = threading.Event()
         self._thread = None
 
         if GPIO_AVAILABLE:
@@ -137,12 +160,18 @@ class StepperMotor:
         # ramp loop's own timing can be loose without affecting motor speed.
         RAMP_DT = 0.02  # seconds between ramp updates
         last = time.monotonic()
-        if self._step is not None:
-            self._step.value = 0.5  # 50% duty -> emit step pulses
         while not self._stop.is_set():
             now = time.monotonic()
             dt = now - last
             last = now
+
+            # Position-hold: stay energized but emit no step pulses.
+            if self._pause.is_set() and not self._soft_stop.is_set():
+                self.current_speed = 0.0
+                if self._step is not None:
+                    self._step.value = 0.0
+                time.sleep(RAMP_DT)
+                continue
 
             # During a soft-stop the target eases to zero; once stopped, exit.
             target = 0.0 if self._soft_stop.is_set() else float(self.speed)
@@ -158,6 +187,7 @@ class StepperMotor:
             speed = max(self.current_speed, float(MIN_SPEED))
             if self._step is not None:
                 self._step.frequency = max(1, int(round(speed)))
+                self._step.value = 0.5  # 50% duty -> emit step pulses
             time.sleep(RAMP_DT)
 
         # Worker is exiting (soft ramp-down completed). Stop pulses, de-energize
@@ -175,6 +205,12 @@ class StepperMotor:
     def enable(self):
         with self._lock:
             if self.enabled:
+                # Already energized — but it may be in a position-HOLD (paused)
+                # from teach/playback. Resume pulses so the motor actually runs
+                # instead of silently staying held.
+                self._soft_stop.clear()
+                self._pause.clear()
+                self.stopping = False
                 return
             self.enabled = True
             self.stopping = False
@@ -184,8 +220,24 @@ class StepperMotor:
                 self._en.on()  # energize (handles active-low)
             self._stop.clear()
             self._soft_stop.clear()
+            self._pause.clear()
             self._thread = threading.Thread(target=self._run, daemon=True)
             self._thread.start()
+
+    def hold(self):
+        """Keep the coils energized but stop emitting pulses (position hold).
+
+        Used by the closed-loop positioner to freeze a joint once it reaches
+        its target. Starts the worker if it isn't already running.
+        """
+        if self._thread is None or not self._thread.is_alive():
+            self.enable()
+        self._soft_stop.clear()
+        self._pause.set()
+
+    def run_pulses(self):
+        """Resume emitting step pulses (closed-loop positioner is driving)."""
+        self._pause.clear()
 
     def disable(self, soft=True):
         with self._lock:
@@ -430,6 +482,233 @@ def get_encoder(mid):
     return encoders.get(mid)
 
 
+# ---------------------------------------------------------------------------
+# Robot arm: teach (record encoder poses) and playback (closed-loop move)
+# ---------------------------------------------------------------------------
+class RobotArm:
+    """Coordinates the joints for teach-and-playback.
+
+    A *waypoint* stores the absolute encoder count of every joint. Playback
+    drives all joints toward each waypoint at once using software closed-loop
+    position control (read encoder -> proportional speed toward target ->
+    stop within a tolerance band), then dwells and advances to the next one.
+    """
+
+    def __init__(self, motors, encoders):
+        self.motors = motors
+        self.encoders = encoders
+        # +1 if commanding "cw" makes the encoder count increase, -1 if it
+        # decreases. Learned automatically on the first move of each joint and
+        # reused afterwards (wiring polarity differs per motor).
+        self.polarity = {mid: 1 for mid in motors}
+        self._stop = threading.Event()
+        self._thread = None
+        self._state_lock = threading.Lock()
+        self.state = {
+            "playing": False,
+            "freedrive": False,
+            "loop": 0,
+            "loops": 0,
+            "waypoint": 0,
+            "total": 0,
+            "message": "idle",
+        }
+
+    # -- state ----------------------------------------------------------
+    def _set_state(self, **kw):
+        with self._state_lock:
+            self.state.update(kw)
+
+    def get_state(self):
+        with self._state_lock:
+            return dict(self.state)
+
+    # -- pose capture ---------------------------------------------------
+    def _read_counts(self, mid):
+        d = self.encoders[mid].read()
+        if d.get("error"):
+            return None
+        return d.get("counts")
+
+    def capture(self):
+        """Snapshot every joint's encoder position (counts + output angle)."""
+        pose, angles = {}, {}
+        for mid, enc in self.encoders.items():
+            d = enc.read()
+            if d.get("error"):
+                pose[mid] = None
+                angles[mid] = None
+            else:
+                pose[mid] = d["counts"]
+                angles[mid] = d["output_total_angle_deg"]
+        return {"pose": pose, "angles": angles}
+
+    # -- free-drive (hand guiding) -------------------------------------
+    def free_drive(self, on):
+        for m in self.motors.values():
+            if on:
+                m.disable(soft=False)  # de-energize so the arm moves by hand
+            else:
+                m.hold()  # re-energize and hold the current position
+        self._set_state(
+            freedrive=bool(on),
+            message="free-drive ON - move the arm by hand"
+            if on
+            else "joints holding position",
+        )
+
+    # -- closed-loop coordinated move ----------------------------------
+    def move_to_pose(self, targets, speed_frac=1.0):
+        """Drive all given joints to their target encoder counts at once."""
+        active = {
+            int(mid): int(t)
+            for mid, t in targets.items()
+            if t is not None and int(mid) in self.motors
+        }
+        if not active:
+            return True
+        speed_cap = int(
+            _clamp(
+                MAX_SPEED * 0.6 * _clamp(speed_frac, 0.05, 1.0),
+                POS_APPROACH_MIN_SPS,
+                MAX_SPEED,
+            )
+        )
+        for mid in active:
+            self.motors[mid].enable()
+        last_err = {mid: None for mid in active}
+        wrong = {mid: 0 for mid in active}
+        confirmed = {mid: False for mid in active}
+        done = set()
+        deadline = time.time() + POS_TIMEOUT_S
+        while time.time() < deadline and not self._stop.is_set():
+            all_done = True
+            for mid, target in active.items():
+                m = self.motors[mid]
+                cur = self._read_counts(mid)
+                if cur is None:
+                    m.hold()  # no feedback -> don't move blindly
+                    continue
+                err = target - cur
+                if abs(err) <= POS_TOLERANCE_COUNTS:
+                    done.add(mid)
+                    m.hold()
+                    continue
+                all_done = False
+                done.discard(mid)
+                # Direction from the sign of the error and learned polarity.
+                m.set_direction("cw" if (err * self.polarity[mid]) > 0 else "ccw")
+                # Until the move direction is confirmed correct, cap speed so a
+                # wrong-polarity guess can only nudge the joint a little.
+                cap = speed_cap if confirmed[mid] else min(speed_cap, POS_SAFE_SPS)
+                m.set_speed(int(_clamp(abs(err) * POS_KP, POS_APPROACH_MIN_SPS, cap)))
+                m.run_pulses()
+                le = last_err[mid]
+                if le is not None:
+                    if abs(err) < abs(le) - 4:
+                        confirmed[mid] = True  # error shrinking -> right way
+                        wrong[mid] = 0
+                    elif abs(err) > abs(le) + 12:
+                        wrong[mid] += 1
+                        if wrong[mid] >= 6:  # consistently diverging -> flip
+                            self.polarity[mid] *= -1
+                            wrong[mid] = 0
+                            confirmed[mid] = False
+                last_err[mid] = err
+            if all_done:
+                break
+            time.sleep(0.03)
+        for mid in active:
+            self.motors[mid].hold()
+        return len(done) == len(active)
+
+    # -- playback engine -----------------------------------------------
+    def play(self, waypoints, speed_frac, loops, default_dwell):
+        self._stop.clear()
+        total = len(waypoints)
+        loop = 0
+        try:
+            while not self._stop.is_set():
+                loop += 1
+                self._set_state(loop=loop, loops=loops)
+                for idx, wp in enumerate(waypoints):
+                    if self._stop.is_set():
+                        break
+                    self._set_state(
+                        playing=True,
+                        waypoint=idx + 1,
+                        total=total,
+                        message="moving to waypoint %d" % (idx + 1),
+                    )
+                    self.move_to_pose(wp.get("pose", {}), speed_frac)
+                    if self._stop.is_set():
+                        break
+                    dwell = wp.get("dwell")
+                    if dwell is None:
+                        dwell = default_dwell
+                    self._set_state(
+                        message="dwell %.1fs at waypoint %d" % (dwell, idx + 1)
+                    )
+                    self._interruptible_sleep(dwell)
+                if loops and loop >= loops:
+                    break
+        finally:
+            self._set_state(
+                playing=False,
+                message="stopped" if self._stop.is_set() else "playback complete",
+            )
+
+    def _interruptible_sleep(self, seconds):
+        end = time.time() + max(0.0, float(seconds))
+        while time.time() < end and not self._stop.is_set():
+            time.sleep(0.05)
+
+    def start_playback(self, waypoints, speed_frac=1.0, loops=1, default_dwell=0.5):
+        if self._thread and self._thread.is_alive():
+            return False
+        self._stop.clear()
+        self._thread = threading.Thread(
+            target=self.play,
+            args=(waypoints, speed_frac, loops, default_dwell),
+            daemon=True,
+        )
+        self._thread.start()
+        return True
+
+    def stop_playback(self):
+        self._stop.set()
+
+    # -- program persistence -------------------------------------------
+    def _program_path(self, name):
+        if not re.match(r"^[A-Za-z0-9 _-]{1,40}$", name or ""):
+            raise ValueError("invalid program name")
+        os.makedirs(PROGRAMS_DIR, exist_ok=True)
+        return os.path.join(PROGRAMS_DIR, name + ".json")
+
+    def list_programs(self):
+        if not os.path.isdir(PROGRAMS_DIR):
+            return []
+        return sorted(
+            f[:-5] for f in os.listdir(PROGRAMS_DIR) if f.endswith(".json")
+        )
+
+    def load_program(self, name):
+        with open(self._program_path(name), "r") as f:
+            return json.load(f)
+
+    def save_program(self, name, data):
+        with open(self._program_path(name), "w") as f:
+            json.dump(data, f, indent=2)
+
+    def delete_program(self, name):
+        path = self._program_path(name)
+        if os.path.exists(path):
+            os.remove(path)
+
+
+arm = RobotArm(motors, encoders)
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -476,6 +755,15 @@ def motor_disable(mid):
     soft = data.get("soft", True)
     motor.disable(soft=bool(soft))
     return jsonify(motor.status())
+
+
+@app.route("/estop", methods=["POST"])
+def estop():
+    """Emergency stop: immediately hard-stop every motor and any playback."""
+    arm.stop_playback()
+    for m in motors.values():
+        m.disable(soft=False)
+    return jsonify({"stopped": list(motors.keys())})
 
 
 @app.route("/motor/<int:mid>/direction", methods=["POST"])
@@ -563,11 +851,87 @@ def motor_encoder(mid):
     return jsonify(enc.read())
 
 
+# -- Robot arm: teach & playback -------------------------------------------
+@app.route("/arm/capture", methods=["POST"])
+def arm_capture():
+    return jsonify(arm.capture())
+
+
+@app.route("/arm/freedrive", methods=["POST"])
+def arm_freedrive():
+    data = request.get_json(silent=True) or {}
+    arm.free_drive(bool(data.get("on", False)))
+    return jsonify(arm.get_state())
+
+
+@app.route("/arm/play", methods=["POST"])
+def arm_play():
+    data = request.get_json(silent=True) or {}
+    waypoints = data.get("waypoints") or []
+    if not waypoints:
+        return jsonify({"error": "no waypoints"}), 400
+    try:
+        speed = float(data.get("speed", 1.0))
+        loops = int(data.get("loops", 1))
+        dwell = float(data.get("dwell", 0.5))
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid play parameters"}), 400
+    if not arm.start_playback(waypoints, speed, loops, dwell):
+        return jsonify({"error": "already playing"}), 409
+    return jsonify(arm.get_state())
+
+
+@app.route("/arm/stop", methods=["POST"])
+def arm_stop():
+    arm.stop_playback()
+    return jsonify(arm.get_state())
+
+
+@app.route("/arm/status")
+def arm_status():
+    return jsonify(arm.get_state())
+
+
+@app.route("/programs", methods=["GET"])
+def programs_list():
+    return jsonify({"programs": arm.list_programs()})
+
+
+@app.route("/programs/<name>", methods=["GET"])
+def program_get(name):
+    try:
+        return jsonify(arm.load_program(name))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except FileNotFoundError:
+        return jsonify({"error": "not found"}), 404
+
+
+@app.route("/programs/<name>", methods=["POST"])
+def program_save(name):
+    data = request.get_json(silent=True) or {}
+    try:
+        arm.save_program(name, data)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"saved": name})
+
+
+@app.route("/programs/<name>", methods=["DELETE"])
+def program_delete(name):
+    try:
+        arm.delete_program(name)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"deleted": name})
+
+
 if __name__ == "__main__":
     try:
         # threaded=True so a slow encoder read on the shared UART bus never
         # blocks motor enable/disable/status requests.
         app.run(host="0.0.0.0", port=5000, threaded=True)
     finally:
+        arm.stop_playback()
         for _m in motors.values():
             _m.disable(soft=False)

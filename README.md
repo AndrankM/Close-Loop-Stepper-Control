@@ -17,6 +17,13 @@ the app reports its RPM and rotation relative to the geared output shaft.
 - **Four independent motors** — each with its own control card and live encoder card.
 - **Motor control** — enable/disable, direction (CW/CCW), speed (steps/s), and
   target RPM.
+- **Hold-to-jog** — momentary CW/CCW jog buttons on each motor: the motor runs
+  while the button is held and soft-stops the instant it is released (works with
+  mouse and touch, with pointer capture so it stops even if the pointer slides off).
+- **Teach &amp; playback** — record encoder poses and play them back as coordinated
+  motion, Dobot-style (see [Teach &amp; playback](#teach--playback)).
+- **Global emergency stop** — a prominent header button plus a sticky floating
+  button immediately hard-stop **all** motors and any running playback at once.
 - **Hardware-timed step pulses** — step signals are generated with hardware PWM
   (frequency = step rate), giving accurate, linear speed control up to 6000 steps/s.
 - **Acceleration ramp** — smooth ramp toward the target speed with a configurable
@@ -46,7 +53,7 @@ the app reports its RPM and rotation relative to the geared output shaft.
 | 1     | Direct (1:1)     | GPIO 17 | GPIO 27 | GPIO 22 |
 | 2     | 5:1 planetary    | GPIO 2  | GPIO 3  | GPIO 4  |
 | 3     | Direct (1:1)     | GPIO 10 | GPIO 9  | GPIO 11 |
-| 4     | Direct (1:1)     | GPIO 0  | GPIO 5  | GPIO 6  |
+| 4     | Direct (1:1)     | GPIO 16 | GPIO 20 | GPIO 21 |
 
 `EN` is active-LOW on the SERVO42C; each motor's `GND` ties to the Pi `GND`.
 
@@ -166,6 +173,21 @@ Routes are parameterized by motor id (`<mid>` = `1`–`4`).
 | POST   | `/motor/<mid>/accel`      | Set acceleration (steps/s²)                 |
 | GET    | `/motor/<mid>/status`     | Motor status JSON                           |
 | GET    | `/motor/<mid>/encoder`    | Encoder reading JSON                        |
+| POST   | `/estop`                  | Emergency stop: hard-stop all motors + playback |
+
+### Teach &amp; playback API
+
+| Method | Route                | Description                                          |
+| ------ | -------------------- | ---------------------------------------------------- |
+| POST   | `/arm/capture`       | Snapshot all joints' encoder positions (a waypoint)  |
+| POST   | `/arm/freedrive`     | `{"on": true\|false}` de-energize to hand-guide / re-hold |
+| POST   | `/arm/play`          | Play waypoints `{waypoints, speed, loops, dwell}`    |
+| POST   | `/arm/stop`          | Stop playback                                        |
+| GET    | `/arm/status`        | Playback state JSON                                  |
+| GET    | `/programs`          | List saved programs                                  |
+| GET    | `/programs/<name>`   | Load a saved program                                 |
+| POST   | `/programs/<name>`   | Save a program (JSON body)                           |
+| DELETE | `/programs/<name>`   | Delete a program                                     |
 
 ### Encoder response
 
@@ -192,13 +214,39 @@ signed `carry` that increments/decrements each full turn, so the total count
 The `output_*` fields divide motor-shaft motion by `gear_ratio` to give the geared
 output-shaft position (identical to the motor shaft for the 1:1 motor).
 
+## Teach &amp; playback
+
+The dashboard includes a **Teach &amp; Playback** panel for recording arm poses and
+replaying them as coordinated motion, similar to Dobot Studio.
+
+- **Teach** a pose in two ways:
+  - **Free-drive** \u2014 toggle free-drive to de-energize all motors so the arm can be
+    moved by hand, position it, then **Record Waypoint** to capture every joint's
+    encoder position.
+  - **Jog** \u2014 use the per-motor hold-to-jog (or any motor control) to position the
+    arm, then **Record Waypoint**.
+- **Playback** drives **all joints simultaneously** toward each waypoint using
+  software closed-loop position control (read encoder \u2192 proportional speed toward
+  target \u2192 stop within a tolerance band). Each joint auto-learns its wiring polarity
+  and is speed-limited until its move direction is confirmed.
+- **Options** \u2014 adjustable playback speed, per-waypoint dwell time, and loop/repeat
+  N times (0 = infinite).
+- **Programs** \u2014 save named programs as JSON on the Pi (under `led_app/programs/`)
+  and load or delete them later. Program names are validated to keep them within
+  that folder.
+
+Closed-loop tuning constants live in `app.py`: `POS_TOLERANCE_COUNTS` (stop band),
+`POS_KP` (proportional gain), `POS_TIMEOUT_S`, `POS_APPROACH_MIN_SPS`, and
+`POS_SAFE_SPS` (speed cap until direction is confirmed).
+
 ## Project structure
 
 ```
 led_app/
-  app.py               Flask backend: motor control + encoder readers
+  app.py               Flask backend: motor control + encoder readers + arm
   templates/
-    index.html         Dashboard UI (per-motor controls + live encoder)
+    index.html         Dashboard UI (per-motor controls + live encoder + teach/playback)
+  programs/            Saved teach/playback programs (JSON, created at runtime)
   speedtest.py         Measures actual motor speed via the encoder
   redeploy.ps1         Deploy script (scp + restart service over SSH)
 blink_led.py           Standalone onboard LED blink example
@@ -210,7 +258,7 @@ blink_led.py           Standalone onboard LED blink example
 service:
 
 ```powershell
-./led_app/redeploy.ps1 -PiHost 192.168.0.103 -PiUser andpi5
+./led_app/redeploy.ps1 -PiHost 192.168.0.101 -PiUser andpi5
 ```
 
 ## License
