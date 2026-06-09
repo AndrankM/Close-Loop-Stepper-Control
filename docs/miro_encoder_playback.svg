@@ -1,0 +1,270 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="960" viewBox="0 0 1200 960" font-family="'Segoe UI', Arial, sans-serif">
+  <defs>
+    <linearGradient id="metalV" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#9aa2b0"/>
+      <stop offset="0.45" stop-color="#646d7d"/>
+      <stop offset="1" stop-color="#363d4b"/>
+    </linearGradient>
+    <linearGradient id="metalH" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9aa2b0"/>
+      <stop offset="0.45" stop-color="#646d7d"/>
+      <stop offset="1" stop-color="#363d4b"/>
+    </linearGradient>
+    <radialGradient id="joint" cx="0.32" cy="0.28" r="0.85">
+      <stop offset="0" stop-color="#aab1bd"/>
+      <stop offset="0.6" stop-color="#5c6473"/>
+      <stop offset="1" stop-color="#363d4b"/>
+    </radialGradient>
+    <radialGradient id="jointHub" cx="0.4" cy="0.35" r="0.8">
+      <stop offset="0" stop-color="#3a4150"/>
+      <stop offset="1" stop-color="#191d27"/>
+    </radialGradient>
+    <linearGradient id="copper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d99c6c"/>
+      <stop offset="0.5" stop-color="#b3784e"/>
+      <stop offset="1" stop-color="#8a5128"/>
+    </linearGradient>
+    <radialGradient id="tool" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#79f0ad"/>
+      <stop offset="1" stop-color="#13824a"/>
+    </radialGradient>
+    <linearGradient id="pcb" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f8a55"/>
+      <stop offset="1" stop-color="#0f5733"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#111a2b"/>
+      <stop offset="1" stop-color="#0c1320"/>
+    </linearGradient>
+    <linearGradient id="server" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b2f6b"/>
+      <stop offset="1" stop-color="#241a4d"/>
+    </linearGradient>
+    <radialGradient id="aiGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#c4b5fd"/>
+      <stop offset="0.7" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#5b21b6"/>
+    </radialGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.35"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="soft" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="green" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#34d399"/></marker>
+    <marker id="amber" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#f59e0b"/></marker>
+    <marker id="blue" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#7dd3fc"/></marker>
+    <marker id="violet" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#a78bfa"/></marker>
+  </defs>
+
+  <rect width="1200" height="960" fill="#080b12"/>
+
+  <!-- header -->
+  <text x="60" y="56" fill="#f3f4f6" font-size="27" font-weight="700">MIRO &#183; AI commands recorded scenarios over the API</text>
+  <text x="60" y="84" fill="#7b8290" font-size="15">The Pi 5 records joint encoder poses. The <tspan fill="#a78bfa" font-weight="600">central server runs the AI</tspan>; its decisions become REST API calls that tell MIRO which recorded scenario to play.</text>
+
+  <!-- stage dividers -->
+  <line x1="430" y1="120" x2="430" y2="690" stroke="#161d2b" stroke-width="1.5"/>
+  <line x1="800" y1="120" x2="800" y2="690" stroke="#161d2b" stroke-width="1.5"/>
+
+  <text x="225" y="150" fill="#34d399" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="2">ROBOT ARM</text>
+  <text x="615" y="150" fill="#7dd3fc" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="2">THE BRAIN &#8212; PI 5</text>
+  <text x="1000" y="150" fill="#cbd5e1" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="2">WEB UI</text>
+
+  <!-- ===================== ROBOT ARM (actual MIRO photo) ===================== -->
+  <g filter="url(#soft)">
+    <image href="MIRO.PNG" x="55" y="170" width="340" height="453" preserveAspectRatio="xMidYMid meet"/>
+  </g>
+
+  <!-- joint encoder badges overlaid on the real joints -->
+  <g font-size="12" font-weight="700">
+    <g><circle cx="198" cy="468" r="14" fill="#0b1a12" stroke="#34d399" stroke-width="2"/><text x="198" y="473" fill="#34d399" text-anchor="middle">J1</text></g>
+    <g><circle cx="162" cy="367" r="14" fill="#0b1a12" stroke="#34d399" stroke-width="2"/><text x="162" y="372" fill="#34d399" text-anchor="middle">J2</text></g>
+    <g><circle cx="261" cy="233" r="14" fill="#0b1a12" stroke="#34d399" stroke-width="2"/><text x="261" y="238" fill="#34d399" text-anchor="middle">J3</text></g>
+    <g><circle cx="338" cy="292" r="14" fill="#0b1a12" stroke="#34d399" stroke-width="2"/><text x="338" y="297" fill="#34d399" text-anchor="middle">J4</text></g>
+  </g>
+
+  <text x="225" y="662" fill="#aeb6c2" font-size="13" text-anchor="middle">4&#215; NEMA 17 &#183; MKS SERVO42C drivers</text>
+  <text x="225" y="682" fill="#34d399" font-size="12.5" text-anchor="middle" font-weight="600">closed-loop &#183; magnetic encoder, 65536 counts/rev</text>
+
+  <!-- ===================== PI 5 ===================== -->
+  <g filter="url(#soft)" transform="translate(498,210)">
+    <rect x="0" y="0" width="234" height="150" rx="14" fill="url(#pcb)" stroke="#0a3d24" stroke-width="2"/>
+    <rect x="16" y="14" width="202" height="13" rx="3" fill="#10161f"/>
+    <g fill="#d9b25a">
+      <circle cx="28" cy="20" r="3"/><circle cx="45" cy="20" r="3"/><circle cx="62" cy="20" r="3"/><circle cx="79" cy="20" r="3"/>
+      <circle cx="96" cy="20" r="3"/><circle cx="113" cy="20" r="3"/><circle cx="130" cy="20" r="3"/><circle cx="147" cy="20" r="3"/>
+      <circle cx="164" cy="20" r="3"/><circle cx="181" cy="20" r="3"/><circle cx="198" cy="20" r="3"/><circle cx="206" cy="20" r="3"/>
+    </g>
+    <rect x="84" y="50" width="66" height="58" rx="6" fill="#0d1219" stroke="#2a3340"/>
+    <text x="117" y="76" fill="#aeb6c2" font-size="10" text-anchor="middle">BCM</text>
+    <text x="117" y="90" fill="#aeb6c2" font-size="10" text-anchor="middle">SoC</text>
+    <rect x="16" y="120" width="38" height="20" rx="3" fill="#10161f"/>
+    <rect x="60" y="120" width="38" height="20" rx="3" fill="#10161f"/>
+    <text x="117" y="135" fill="#eafff4" font-size="15" font-weight="700" text-anchor="middle">Raspberry Pi 5</text>
+  </g>
+  <text x="615" y="392" fill="#7b8290" font-size="12.5" text-anchor="middle">Flask app &#183; motor control + RobotArm engine</text>
+
+  <g transform="translate(498,415)">
+    <rect x="0" y="0" width="234" height="52" rx="9" fill="url(#panel)" stroke="#1c2638"/>
+    <circle cx="22" cy="26" r="11" fill="#0b1a12" stroke="#34d399" stroke-width="2"/>
+    <text x="22" y="30" fill="#34d399" font-size="12" font-weight="700" text-anchor="middle">1</text>
+    <text x="44" y="22" fill="#e6e9ef" font-size="12.5" font-weight="600">capture() &#8594; waypoint</text>
+    <text x="44" y="39" fill="#7b8290" font-size="11">{ J1,J2,J3,J4 encoder counts }</text>
+
+    <rect x="0" y="64" width="234" height="52" rx="9" fill="url(#panel)" stroke="#1c2638"/>
+    <circle cx="22" cy="90" r="11" fill="#0b1a12" stroke="#34d399" stroke-width="2"/>
+    <text x="22" y="94" fill="#34d399" font-size="12" font-weight="700" text-anchor="middle">2</text>
+    <text x="44" y="86" fill="#e6e9ef" font-size="12.5" font-weight="600">save scenario (JSON)</text>
+    <text x="44" y="103" fill="#7b8290" font-size="11">led_app/programs/*.json</text>
+
+    <rect x="0" y="128" width="234" height="52" rx="9" fill="url(#panel)" stroke="#1c2638"/>
+    <circle cx="22" cy="154" r="11" fill="#1b1408" stroke="#f59e0b" stroke-width="2"/>
+    <text x="22" y="158" fill="#f59e0b" font-size="12" font-weight="700" text-anchor="middle">3</text>
+    <text x="44" y="150" fill="#e6e9ef" font-size="12.5" font-weight="600">play &#8594; coordinated move</text>
+    <text x="44" y="167" fill="#7b8290" font-size="11">all joints to each pose</text>
+  </g>
+
+  <!-- ===================== WEB UI ===================== -->
+  <g filter="url(#soft)" transform="translate(862,205)">
+    <rect x="0" y="0" width="278" height="270" rx="13" fill="#0d1320" stroke="#1f2937" stroke-width="1.5"/>
+    <text x="18" y="30" fill="#eef1f6" font-size="14.5" font-weight="700">Teach &amp; Playback</text>
+    <rect x="18" y="44" width="112" height="28" rx="7" fill="#1f2937" stroke="#374151"/>
+    <text x="74" y="63" fill="#e6e9ef" font-size="12" text-anchor="middle">&#9679; Record</text>
+    <rect x="138" y="44" width="62" height="28" rx="7" fill="#0e7490"/>
+    <text x="169" y="63" fill="#fff" font-size="12" text-anchor="middle">&#9654; Play</text>
+    <rect x="208" y="44" width="52" height="28" rx="7" fill="#7f1d1d"/>
+    <text x="234" y="63" fill="#fff" font-size="12" text-anchor="middle">&#9632; Stop</text>
+    <line x1="18" y1="90" x2="260" y2="90" stroke="#1f2937"/>
+    <g font-size="11">
+      <text x="26" y="106" fill="#6b7280">#</text>
+      <text x="120" y="106" fill="#6b7280" text-anchor="end">J1</text>
+      <text x="170" y="106" fill="#6b7280" text-anchor="end">J2</text>
+      <text x="220" y="106" fill="#6b7280" text-anchor="end">J3</text>
+      <text x="256" y="106" fill="#6b7280" text-anchor="end">J4</text>
+    </g>
+    <line x1="18" y1="114" x2="260" y2="114" stroke="#1f2937"/>
+    <g font-size="11" fill="#cbd5e1">
+      <text x="26" y="134">1</text><text x="120" y="134" text-anchor="end">12.4</text><text x="170" y="134" text-anchor="end">88.1</text><text x="220" y="134" text-anchor="end">-34</text><text x="256" y="134" text-anchor="end">5.2</text>
+    </g>
+    <line x1="18" y1="146" x2="260" y2="146" stroke="#161f2c"/>
+    <rect x="18" y="146" width="242" height="30" fill="#13233a"/>
+    <g font-size="11" fill="#cbd5e1">
+      <text x="26" y="166">2</text><text x="120" y="166" text-anchor="end">45.0</text><text x="170" y="166" text-anchor="end">90.3</text><text x="220" y="166" text-anchor="end">-10</text><text x="256" y="166" text-anchor="end">22.9</text>
+    </g>
+    <line x1="18" y1="178" x2="260" y2="178" stroke="#161f2c"/>
+    <g font-size="11" fill="#cbd5e1">
+      <text x="26" y="198">3</text><text x="120" y="198" text-anchor="end">90.0</text><text x="170" y="198" text-anchor="end">45.6</text><text x="220" y="198" text-anchor="end">12</text><text x="256" y="198" text-anchor="end">-40</text>
+    </g>
+    <line x1="18" y1="210" x2="260" y2="210" stroke="#1f2937"/>
+    <text x="18" y="232" fill="#7b8290" font-size="10.5">each row = one saved pose (joint angles)</text>
+    <circle cx="26" cy="250" r="5" fill="#22c55e"/>
+    <text x="38" y="254" fill="#9ca3af" font-size="11">playing &#183; waypoint 2 / 3</text>
+  </g>
+
+  <!-- ===================== ARM <-> PI ===================== -->
+  <path d="M404 308 C440 296 460 272 492 262" stroke="#34d399" stroke-width="3" fill="none" marker-end="url(#green)"/>
+  <g transform="translate(410,250)">
+    <rect x="0" y="0" width="118" height="34" rx="8" fill="#0b1a12" stroke="#1c4a31"/>
+    <text x="59" y="15" fill="#34d399" font-size="11.5" font-weight="700" text-anchor="middle">READ positions</text>
+    <text x="59" y="28" fill="#5e8a72" font-size="9.5" text-anchor="middle">UART @9600</text>
+  </g>
+  <path d="M492 330 C460 350 440 360 404 356" stroke="#f59e0b" stroke-width="3" fill="none" marker-end="url(#amber)"/>
+  <g transform="translate(410,366)">
+    <rect x="0" y="0" width="118" height="34" rx="8" fill="#1b1408" stroke="#5b3f12"/>
+    <text x="59" y="15" fill="#f59e0b" font-size="11.5" font-weight="700" text-anchor="middle">PLAY BACK</text>
+    <text x="59" y="28" fill="#9a7320" font-size="9.5" text-anchor="middle">GPIO step / dir</text>
+  </g>
+  <path d="M732 300 C800 300 800 320 858 320" stroke="#7dd3fc" stroke-width="3" fill="none" marker-end="url(#blue)"/>
+  <text x="795" y="290" fill="#7dd3fc" font-size="11" font-weight="600" text-anchor="middle">HTTP &#183; record / play</text>
+
+  <!-- ===================== CENTRAL SERVER (AI) ===================== -->
+  <line x1="60" y1="712" x2="1140" y2="712" stroke="#1b2233" stroke-width="1.5"/>
+  <text x="600" y="744" fill="#a78bfa" font-size="15" font-weight="700" text-anchor="middle" letter-spacing="2">CENTRAL SERVER &#183; AI decides &#8594; emits API calls &#8594; MIRO plays the matching scenario</text>
+
+  <!-- AI server box -->
+  <g filter="url(#soft)" transform="translate(60,762)">
+    <rect x="0" y="0" width="262" height="128" rx="13" fill="url(#server)" stroke="#4c3a8f" stroke-width="2"/>
+    <g transform="translate(52,64)">
+      <circle r="34" fill="url(#aiGlow)" filter="url(#glow)"/>
+      <g stroke="#e9e3ff" stroke-width="1.2" opacity="0.85">
+        <line x1="-18" y1="-14" x2="0" y2="-2"/><line x1="-18" y1="0" x2="0" y2="-2"/><line x1="-18" y1="14" x2="0" y2="-2"/>
+        <line x1="0" y1="-2" x2="18" y2="-12"/><line x1="0" y1="-2" x2="18" y2="2"/><line x1="0" y1="-2" x2="18" y2="14"/>
+        <line x1="-18" y1="-14" x2="0" y2="12"/><line x1="-18" y1="14" x2="0" y2="12"/>
+        <line x1="0" y1="12" x2="18" y2="2"/><line x1="0" y1="12" x2="18" y2="14"/>
+      </g>
+      <g fill="#fff">
+        <circle cx="-18" cy="-14" r="3.4"/><circle cx="-18" cy="0" r="3.4"/><circle cx="-18" cy="14" r="3.4"/>
+        <circle cx="0" cy="-2" r="3.8"/><circle cx="0" cy="12" r="3.8"/>
+        <circle cx="18" cy="-12" r="3.4"/><circle cx="18" cy="2" r="3.4"/><circle cx="18" cy="14" r="3.4"/>
+      </g>
+    </g>
+    <text x="160" y="46" fill="#e9e3ff" font-size="14" font-weight="700" text-anchor="middle">AI Decision Engine</text>
+    <text x="160" y="66" fill="#b3a6e0" font-size="11" text-anchor="middle">perception &#183; planning</text>
+    <text x="160" y="84" fill="#b3a6e0" font-size="11" text-anchor="middle">picks the scenario to run</text>
+    <text x="160" y="110" fill="#8b7bbf" font-size="10.5" text-anchor="middle" font-style="italic">Fleet / Mission Manager</text>
+  </g>
+
+  <path d="M322 826 C338 826 344 808 360 802" stroke="#a78bfa" stroke-width="2.5" fill="none" marker-end="url(#violet)"/>
+  <text x="343" y="784" fill="#a78bfa" font-size="10.5" font-weight="600" text-anchor="middle">emits</text>
+
+  <!-- API endpoint chips -->
+  <g font-size="12.5" font-family="Consolas, 'Courier New', monospace">
+    <g transform="translate(364,772)">
+      <rect x="0" y="0" width="356" height="26" rx="6" fill="#15102e" stroke="#4c3a8f"/>
+      <rect x="8" y="5" width="48" height="16" rx="4" fill="#0e7490"/><text x="32" y="17" fill="#fff" font-size="10" text-anchor="middle" font-family="'Segoe UI'">POST</text>
+      <text x="66" y="17" fill="#cbb6ff">/api/v1/command/mission</text>
+      <text x="346" y="17" fill="#6b7280" font-size="10" text-anchor="end" font-family="'Segoe UI'">run a saved scenario</text>
+    </g>
+    <g transform="translate(364,804)">
+      <rect x="0" y="0" width="356" height="26" rx="6" fill="#15102e" stroke="#4c3a8f"/>
+      <rect x="8" y="5" width="48" height="16" rx="4" fill="#0e7490"/><text x="32" y="17" fill="#fff" font-size="10" text-anchor="middle" font-family="'Segoe UI'">POST</text>
+      <text x="66" y="17" fill="#cbb6ff">/api/v1/command/move</text>
+      <text x="346" y="17" fill="#6b7280" font-size="10" text-anchor="end" font-family="'Segoe UI'">single motion step</text>
+    </g>
+    <g transform="translate(364,836)">
+      <rect x="0" y="0" width="356" height="26" rx="6" fill="#15102e" stroke="#4c3a8f"/>
+      <rect x="8" y="5" width="48" height="16" rx="4" fill="#7f1d1d"/><text x="32" y="17" fill="#fff" font-size="10" text-anchor="middle" font-family="'Segoe UI'">POST</text>
+      <text x="66" y="17" fill="#cbb6ff">/api/v1/command/stop</text>
+      <text x="346" y="17" fill="#6b7280" font-size="10" text-anchor="end" font-family="'Segoe UI'">emergency stop</text>
+    </g>
+    <g transform="translate(740,804)">
+      <rect x="0" y="0" width="360" height="26" rx="6" fill="#15102e" stroke="#4c3a8f"/>
+      <rect x="8" y="5" width="34" height="16" rx="4" fill="#15803d"/><text x="25" y="17" fill="#fff" font-size="10" text-anchor="middle" font-family="'Segoe UI'">GET</text>
+      <text x="52" y="17" fill="#cbb6ff">/api/v1/status</text>
+      <text x="350" y="17" fill="#6b7280" font-size="10" text-anchor="end" font-family="'Segoe UI'">live pose &amp; progress (AI feedback)</text>
+    </g>
+    <g transform="translate(740,836)">
+      <rect x="0" y="0" width="360" height="26" rx="6" fill="#15102e" stroke="#4c3a8f"/>
+      <rect x="8" y="5" width="48" height="16" rx="4" fill="#0e7490"/><text x="32" y="17" fill="#fff" font-size="10" text-anchor="middle" font-family="'Segoe UI'">POST</text>
+      <text x="66" y="17" fill="#cbb6ff">/api/v1/config</text>
+      <text x="350" y="17" fill="#6b7280" font-size="10" text-anchor="end" font-family="'Segoe UI'">speed / accel limits</text>
+    </g>
+  </g>
+
+  <!-- mission call -> Pi play step -->
+  <path d="M615 770 C615 700 615 640 615 605" stroke="#a78bfa" stroke-width="3" fill="none" stroke-dasharray="7 5" marker-end="url(#violet)"/>
+  <g transform="translate(628,640)">
+    <rect x="0" y="0" width="214" height="44" rx="8" fill="#15102e" stroke="#4c3a8f"/>
+    <text x="107" y="18" fill="#cbb6ff" font-size="11.5" font-weight="700" text-anchor="middle">mission call &#8594; play scenario</text>
+    <text x="107" y="34" fill="#8b7bbf" font-size="10" text-anchor="middle">arm.start_playback(program, loops, speed)</text>
+  </g>
+  <circle cx="615" cy="595" r="5" fill="#a78bfa"/>
+
+  <!-- status feedback (Pi -> AI) -->
+  <path d="M732 488 C812 500 880 540 905 560 C932 582 900 760 825 804" stroke="#15803d" stroke-width="2" fill="none" stroke-dasharray="4 5" marker-end="url(#green)" opacity="0.8"/>
+  <text x="940" y="560" fill="#3fae6a" font-size="10.5" font-weight="600">status &#8594; AI</text>
+
+  <!-- legend -->
+  <g transform="translate(60,930)" font-size="12">
+    <rect x="0" y="-13" width="13" height="13" rx="3" fill="#34d399"/><text x="20" y="-2" fill="#aeb6c2">Encoder read</text>
+    <rect x="135" y="-13" width="13" height="13" rx="3" fill="#f59e0b"/><text x="155" y="-2" fill="#aeb6c2">Play back (GPIO)</text>
+    <rect x="305" y="-13" width="13" height="13" rx="3" fill="#7dd3fc"/><text x="325" y="-2" fill="#aeb6c2">UI &#8596; Pi (HTTP)</text>
+    <rect x="470" y="-13" width="13" height="13" rx="3" fill="#a78bfa"/><text x="490" y="-2" fill="#aeb6c2">AI &#8594; API call &#8594; play recorded scenario</text>
+  </g>
+</svg>

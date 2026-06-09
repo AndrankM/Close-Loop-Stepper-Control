@@ -714,6 +714,40 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/emotion")
+def emotion_page():
+    return render_template("emotion.html")
+
+
+@app.route("/emotion/latest")
+def emotion_latest():
+    """Latest face / emotion result.
+
+    Placeholder until the camera + inference pipeline is added. Returns
+    ``live: false`` so the UI falls back to its built-in simulation. When the
+    camera is wired up, populate this with real values, e.g.::
+
+        {
+          "live": True,
+          "face": 1,
+          "box": [x, y, w, h],            # in the 640x480 frame
+          "scores": {"happy": 0.0, "neutral": 0.0, "surprise": 0.0,
+                     "sad": 0.0, "angry": 0.0, "fear": 0.0},
+          "dominant": "neutral",
+        }
+    """
+    return jsonify({
+        "live": False,
+        "face": None,
+        "box": None,
+        "scores": {
+            "happy": 0.0, "neutral": 0.0, "surprise": 0.0,
+            "sad": 0.0, "angry": 0.0, "fear": 0.0,
+        },
+        "dominant": None,
+    })
+
+
 @app.route("/led/on", methods=["POST"])
 def led_on():
     write_led(LED_TRIGGER, "none")
