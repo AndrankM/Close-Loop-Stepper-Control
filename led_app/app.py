@@ -149,6 +149,43 @@ def _read_voltage():
     return round(float(m.group(1)), 3) if m else None
 
 
+def _read_power():
+    """Total board power from the Pi 5 PMIC.
+
+    `vcgencmd pmic_read_adc` reports a current and a voltage for each supply
+    rail. Summing volts*amps over every rail gives the board's real power draw;
+    the input current is estimated from that power and the 5V supply rail.
+    Returns {'voltage_v', 'current_a', 'power_w'} or None on a non-PMIC board.
+    """
+    raw = _vcgencmd("pmic_read_adc")
+    if not raw:
+        return None
+    amps, volts = {}, {}
+    supply_v = None
+    for line in raw.splitlines():
+        m = re.match(r"\s*(\S+?)_([AV])\s+\w+\(\d+\)=([\d.]+)", line)
+        if not m:
+            continue
+        rail, kind, val = m.group(1), m.group(2), float(m.group(3))
+        if kind == "A":
+            amps[rail] = val
+        else:
+            volts[rail] = val
+            if rail == "EXT5V":
+                supply_v = val
+    if not amps:
+        return None
+    power_w = sum(volts[r] * amps[r] for r in amps if r in volts)
+    if not supply_v:
+        supply_v = volts.get("EXT5V") or 5.0
+    current_a = power_w / supply_v if supply_v else None
+    return {
+        "voltage_v": round(supply_v, 2),
+        "current_a": round(current_a, 2) if current_a is not None else None,
+        "power_w": round(power_w, 2),
+    }
+
+
 def _read_throttled():
     """Parse `vcgencmd get_throttled` into active/past condition lists."""
     raw = _vcgencmd("get_throttled")  # e.g. 'throttled=0x50005'
@@ -272,6 +309,7 @@ def read_health():
         "throttled": _read_throttled(),
         "net": _read_network(),
         "fan_rpm": _read_fan_rpm(),
+        "power": _read_power(),
     }
 
 

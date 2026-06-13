@@ -551,6 +551,12 @@
         <div class="hc-sub" id="hc-fan-sub">active cooler</div>
       </div>
       <div class="hc-item">
+        <div class="hc-label">Power draw</div>
+        <div class="hc-value" id="hc-power-w">--</div>
+        <div class="hc-bar"><span id="hc-power-bar"></span></div>
+        <div class="hc-sub" id="hc-power-sub">-- V &middot; -- A</div>
+      </div>
+      <div class="hc-item">
         <div class="hc-label">Uptime</div>
         <div class="hc-value" id="hc-uptime">--</div>
         <div class="hc-sub" id="hc-volt">-- V core</div>
@@ -1170,6 +1176,13 @@
         // Fan
         $h('hc-fan').textContent = d.fan_rpm != null ? d.fan_rpm + ' RPM' : 'n/a';
         $h('hc-fan-sub').textContent = d.fan_rpm != null ? (d.fan_rpm === 0 ? 'idle (passive)' : 'active cooler') : 'no tachometer';
+
+        // Power draw (V / A / W) from the PMIC
+        const pw = d.power || {};
+        $h('hc-power-w').textContent = pw.power_w != null ? pw.power_w.toFixed(2) + ' W' : 'n/a';
+        // The Pi 5 official supply is 5V/5A = 25W; bar warms as draw rises.
+        setBar('hc-power-bar', pw.power_w != null ? (pw.power_w / 25 * 100) : 0, 48, 80);
+        $h('hc-power-sub').textContent = (pw.voltage_v != null ? pw.voltage_v.toFixed(2) : '--') + ' V \u00b7 ' + (pw.current_a != null ? pw.current_a.toFixed(2) : '--') + ' A';
 
         // Uptime + voltage
         $h('hc-uptime').textContent = fmtUptime(d.uptime_s);
