@@ -64,9 +64,58 @@
       border-radius: 8px;
       padding: 0.3rem 0.7rem;
       font-variant-numeric: tabular-nums;
+      cursor: pointer;
+      user-select: none;
     }
     .cpu-temp.warm { color: #fbbf24; border-color: #5b4a12; }
     .cpu-temp.hot  { color: #ff7676; border-color: #5b1a1a; }
+
+    /* Pi 5 health card */
+    .health-card {
+      max-width: 720px;
+      margin: 0 auto 1.25rem;
+      background: #161a26;
+      border: 1px solid #232838;
+      border-radius: 14px;
+      padding: 1rem 1.1rem;
+      text-align: left;
+    }
+    .health-card.hidden { display: none; }
+    .health-card .hc-title {
+      font-size: 0.9rem; font-weight: 600; color: #cdd3e1;
+      margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.5rem;
+    }
+    .health-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 0.7rem;
+    }
+    .hc-item {
+      background: #11151f; border: 1px solid #232838;
+      border-radius: 10px; padding: 0.6rem 0.7rem;
+    }
+    .hc-item .hc-label {
+      font-size: 0.68rem; letter-spacing: 0.05em; text-transform: uppercase;
+      color: #6b7280; margin-bottom: 0.25rem;
+    }
+    .hc-item .hc-value {
+      font-size: 1.1rem; font-weight: 700; color: #e6e9ef;
+      font-variant-numeric: tabular-nums;
+    }
+    .hc-item .hc-sub { font-size: 0.7rem; color: #7b8290; margin-top: 0.1rem; }
+    .hc-bar { height: 6px; background: #1c2130; border-radius: 999px; overflow: hidden; margin-top: 0.4rem; }
+    .hc-bar > span { display: block; height: 100%; width: 0%; border-radius: 999px; background: #34d399; transition: width 0.4s ease; }
+    .hc-bar > span.warm { background: #fbbf24; }
+    .hc-bar > span.hot  { background: #ff7676; }
+    .hc-power {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; gap: 0.6rem;
+      font-size: 0.8rem; padding: 0.55rem 0.7rem; border-radius: 10px;
+      background: #0e1a16; border: 1px solid #1c4a31; color: #9fe6c2;
+    }
+    .hc-power.bad { background: #1f0f0f; border-color: #5b1a1a; color: #ff9b9b; }
+    .hc-power .hc-dot { width: 9px; height: 9px; border-radius: 50%; background: #34d399; }
+    .hc-power.bad .hc-dot { background: #ff5a5a; }
 
     h1 {
       font-size: 1.8rem;
@@ -454,7 +503,46 @@
     <button class="btn-estop-all" id="estop-all" onclick="estopAll()">&#9888; STOP ALL MOTORS</button>
     <div style="margin-top:0.6rem; display:flex; gap:0.5rem; justify-content:center; align-items:center; flex-wrap:wrap;">
       <a href="/emotion" style="color:#7dd3fc;font-size:0.8rem;text-decoration:none;border:1px solid #2a3650;border-radius:8px;padding:0.3rem 0.7rem;display:inline-block;">&#128247; Emotion detection</a>
-      <span class="cpu-temp" id="cpu-temp" title="Raspberry Pi 5 SoC temperature">&#127777; Pi <span id="cpu-temp-val">--</span>&deg;C</span>
+      <span class="cpu-temp" id="cpu-temp" onclick="toggleHealth()" title="Click for Pi 5 health details">&#127777; Pi <span id="cpu-temp-val">--</span>&deg;C</span>
+    </div>
+  </div>
+
+  <div class="health-card hidden" id="health-card">
+    <div class="hc-title">&#128202; Raspberry Pi 5 health <span id="hc-updated" style="margin-left:auto;font-weight:400;color:#5a6178;font-size:0.72rem;"></span></div>
+    <div class="health-grid" id="health-grid">
+      <div class="hc-item">
+        <div class="hc-label">CPU usage</div>
+        <div class="hc-value" id="hc-cpu">--</div>
+        <div class="hc-bar"><span id="hc-cpu-bar"></span></div>
+        <div class="hc-sub" id="hc-cpu-sub">load --</div>
+      </div>
+      <div class="hc-item">
+        <div class="hc-label">Temperature</div>
+        <div class="hc-value" id="hc-temp">--</div>
+        <div class="hc-bar"><span id="hc-temp-bar"></span></div>
+        <div class="hc-sub" id="hc-freq">-- MHz</div>
+      </div>
+      <div class="hc-item">
+        <div class="hc-label">Memory</div>
+        <div class="hc-value" id="hc-mem">--</div>
+        <div class="hc-bar"><span id="hc-mem-bar"></span></div>
+        <div class="hc-sub" id="hc-mem-sub">-- / -- MB</div>
+      </div>
+      <div class="hc-item">
+        <div class="hc-label">Disk (/)</div>
+        <div class="hc-value" id="hc-disk">--</div>
+        <div class="hc-bar"><span id="hc-disk-bar"></span></div>
+        <div class="hc-sub" id="hc-disk-sub">-- / -- GB</div>
+      </div>
+      <div class="hc-item">
+        <div class="hc-label">Uptime</div>
+        <div class="hc-value" id="hc-uptime">--</div>
+        <div class="hc-sub" id="hc-volt">-- V core</div>
+      </div>
+      <div class="hc-power" id="hc-power">
+        <span class="hc-dot"></span>
+        <span id="hc-power-text">Power &amp; throttling: --</span>
+      </div>
     </div>
   </div>
 
@@ -977,28 +1065,123 @@
       setTimeout(scheduleEncoder, m.id * 120);
     });
 
-    // ---------------- Pi 5 SoC temperature ----------------
+    // ---------------- Pi 5 health ----------------
+    let healthVisible = false;
+    let healthTimer = null;
+
+    function toggleHealth() {
+      healthVisible = !healthVisible;
+      const card = document.getElementById('health-card');
+      card.classList.toggle('hidden', !healthVisible);
+      if (healthVisible) {
+        pollHealth();
+        if (!healthTimer) healthTimer = setInterval(pollHealth, 3000);
+      } else if (healthTimer) {
+        clearInterval(healthTimer); healthTimer = null;
+      }
+    }
+
+    function fmtUptime(s) {
+      if (s === null || s === undefined) return '--';
+      const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+      if (d) return `${d}d ${h}h`;
+      if (h) return `${h}h ${m}m`;
+      return `${m}m`;
+    }
+
+    function setBar(id, pct, warmAt, hotAt) {
+      const bar = document.getElementById(id);
+      if (!bar) return;
+      const v = (pct === null || pct === undefined) ? 0 : pct;
+      bar.style.width = Math.max(0, Math.min(100, v)) + '%';
+      bar.classList.toggle('hot', hotAt !== undefined && v >= hotAt);
+      bar.classList.toggle('warm', warmAt !== undefined && v >= warmAt && (hotAt === undefined || v < hotAt));
+    }
+
+    function setTempChip(t) {
+      const chip = document.getElementById('cpu-temp');
+      const val = document.getElementById('cpu-temp-val');
+      if (t === null || t === undefined) {
+        val.textContent = 'n/a'; chip.classList.remove('warm', 'hot');
+      } else {
+        val.textContent = t.toFixed(1);
+        chip.classList.toggle('hot', t >= 75);
+        chip.classList.toggle('warm', t >= 60 && t < 75);
+      }
+    }
+
+    async function pollHealth() {
+      try {
+        const r = await fetch('/system/health', { cache: 'no-store' });
+        const d = await r.json();
+        setTempChip(d.temp_c);
+
+        const $h = id => document.getElementById(id);
+
+        // CPU
+        $h('hc-cpu').textContent = d.cpu_percent != null ? d.cpu_percent + '%' : '--';
+        setBar('hc-cpu-bar', d.cpu_percent, 70, 90);
+        $h('hc-cpu-sub').textContent = d.load1 != null ? 'load ' + d.load1 : 'load --';
+
+        // Temp
+        $h('hc-temp').textContent = d.temp_c != null ? d.temp_c.toFixed(1) + '°C' : '--';
+        setBar('hc-temp-bar', d.temp_c != null ? (d.temp_c / 85 * 100) : 0, 70, 88);
+        $h('hc-freq').textContent = d.cpu_freq_mhz != null ? d.cpu_freq_mhz + ' MHz' : '-- MHz';
+
+        // Memory
+        const mem = d.mem || {};
+        $h('hc-mem').textContent = mem.percent != null ? mem.percent + '%' : '--';
+        setBar('hc-mem-bar', mem.percent, 70, 90);
+        $h('hc-mem-sub').textContent = (mem.used_mb != null ? mem.used_mb : '--') + ' / ' + (mem.total_mb != null ? mem.total_mb : '--') + ' MB';
+
+        // Disk
+        const disk = d.disk || {};
+        $h('hc-disk').textContent = disk.percent != null ? disk.percent + '%' : '--';
+        setBar('hc-disk-bar', disk.percent, 80, 92);
+        $h('hc-disk-sub').textContent = (disk.used_gb != null ? disk.used_gb : '--') + ' / ' + (disk.total_gb != null ? disk.total_gb : '--') + ' GB';
+
+        // Uptime + voltage
+        $h('hc-uptime').textContent = fmtUptime(d.uptime_s);
+        $h('hc-volt').textContent = d.voltage_v != null ? d.voltage_v.toFixed(2) + ' V core' : '-- V core';
+
+        // Power / throttling
+        const power = $h('hc-power');
+        const ptext = $h('hc-power-text');
+        const thr = d.throttled;
+        if (!thr) {
+          power.classList.remove('bad');
+          ptext.textContent = 'Power & throttling: n/a (vcgencmd unavailable)';
+        } else if (thr.active && thr.active.length) {
+          power.classList.add('bad');
+          ptext.textContent = '⚠ NOW: ' + thr.active.join(', ');
+        } else if (thr.past && thr.past.length) {
+          power.classList.remove('bad');
+          ptext.textContent = 'OK now · since boot: ' + thr.past.join(', ');
+        } else {
+          power.classList.remove('bad');
+          ptext.textContent = 'Power & throttling: healthy ✓';
+        }
+
+        $h('hc-updated').textContent = 'updated ' + new Date().toLocaleTimeString();
+      } catch (e) {
+        const val = document.getElementById('cpu-temp-val');
+        if (val) val.textContent = '--';
+      }
+    }
+
+    // Keep the header temp chip fresh even when the card is collapsed.
     async function pollCpuTemp() {
       try {
         const r = await fetch('/system/temp', { cache: 'no-store' });
         const d = await r.json();
-        const chip = document.getElementById('cpu-temp');
-        const val = document.getElementById('cpu-temp-val');
-        if (d.temp_c === null || d.temp_c === undefined) {
-          val.textContent = 'n/a';
-          chip.classList.remove('warm', 'hot');
-        } else {
-          val.textContent = d.temp_c.toFixed(1);
-          chip.classList.toggle('hot', d.temp_c >= 75);
-          chip.classList.toggle('warm', d.temp_c >= 60 && d.temp_c < 75);
-        }
+        setTempChip(d.temp_c);
       } catch (e) {
         const val = document.getElementById('cpu-temp-val');
         if (val) val.textContent = '--';
       }
     }
     pollCpuTemp();
-    setInterval(pollCpuTemp, 4000);
+    setInterval(() => { if (!healthVisible) pollCpuTemp(); }, 4000);
 
     // ---------------- Teach & Playback ----------------
     const waypoints = [];      // [{ pose:{1:counts,...}, angles:{1:deg,...}, dwell:Number|null }]

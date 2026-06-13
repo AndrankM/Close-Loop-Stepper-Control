@@ -3,6 +3,8 @@ import json
 import re
 import threading
 import time
+import shutil
+import subprocess
 
 from flask import Flask, jsonify, render_template, request
 
@@ -56,6 +58,141 @@ def read_cpu_temp_c():
         return round(milli / 1000.0, 1)
     except Exception:
         return None
+
+
+# ---------------------------------------------------------------------------
+# Onboard health (CPU load, memory, disk, uptime, throttling, voltage)
+# ---------------------------------------------------------------------------
+# Cached snapshot of /proc/stat so CPU usage can be measured as a delta.
+_cpu_stat_prev = {"total": 0, "idle": 0}
+
+# Flag bits returned by `vcgencmd get_throttled`. The low bits mean the
+# condition is happening right now; the high bits mean it occurred since boot.
+_THROTTLE_FLAGS = {
+    0: "under-voltage",
+    1: "arm frequency capped",
+    2: "currently throttled",
+    3: "soft temperature limit",
+}
+
+
+def _read_cpu_percent():
+    """CPU utilisation since the previous call, as a 0-100 percentage."""
+    try:
+        with open("/proc/stat", "r") as f:
+            parts = f.readline().split()
+        vals = [int(v) for v in parts[1:]]
+        idle = vals[3] + (vals[4] if len(vals) > 4 else 0)  # idle + iowait
+        total = sum(vals)
+        d_total = total - _cpu_stat_prev["total"]
+        d_idle = idle - _cpu_stat_prev["idle"]
+        _cpu_stat_prev["total"] = total
+        _cpu_stat_prev["idle"] = idle
+        if d_total <= 0:
+            return None
+        return round(100.0 * (d_total - d_idle) / d_total, 1)
+    except Exception:
+        return None
+
+
+def _read_meminfo():
+    """Return (used_mb, total_mb, percent) from /proc/meminfo."""
+    try:
+        info = {}
+        with open("/proc/meminfo", "r") as f:
+            for line in f:
+                key, _, rest = line.partition(":")
+                info[key] = int(rest.strip().split()[0])  # kB
+        total = info.get("MemTotal", 0)
+        avail = info.get("MemAvailable", info.get("MemFree", 0))
+        used = total - avail
+        pct = round(100.0 * used / total, 1) if total else None
+        return round(used / 1024.0), round(total / 1024.0), pct
+    except Exception:
+        return None, None, None
+
+
+def _read_uptime():
+    """System uptime in seconds, or None."""
+    try:
+        with open("/proc/uptime", "r") as f:
+            return int(float(f.read().split()[0]))
+    except Exception:
+        return None
+
+
+def _read_cpu_freq_mhz():
+    try:
+        with open("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq", "r") as f:
+            return round(int(f.read().strip()) / 1000.0)  # kHz -> MHz
+    except Exception:
+        return None
+
+
+def _vcgencmd(*args):
+    try:
+        out = subprocess.run(
+            ["vcgencmd", *args], capture_output=True, text=True, timeout=2.0
+        )
+        return out.stdout.strip()
+    except Exception:
+        return None
+
+
+def _read_voltage():
+    """Core voltage in volts, e.g. 'volt=0.8800V' -> 0.88."""
+    raw = _vcgencmd("measure_volts")
+    if not raw:
+        return None
+    m = re.search(r"([\d.]+)", raw)
+    return round(float(m.group(1)), 3) if m else None
+
+
+def _read_throttled():
+    """Parse `vcgencmd get_throttled` into active/past condition lists."""
+    raw = _vcgencmd("get_throttled")  # e.g. 'throttled=0x50005'
+    if not raw or "=" not in raw:
+        return None
+    try:
+        bits = int(raw.split("=")[1], 16)
+    except ValueError:
+        return None
+    active, past = [], []
+    for bit, name in _THROTTLE_FLAGS.items():
+        if bits & (1 << bit):
+            active.append(name)
+        if bits & (1 << (bit + 16)):
+            past.append(name)
+    return {"raw": raw.split("=")[1], "active": active, "past": past, "ok": not active}
+
+
+def read_health():
+    """Aggregate Pi health metrics into one dict for the UI."""
+    used_mb, total_mb, mem_pct = _read_meminfo()
+    try:
+        du = shutil.disk_usage("/")
+        disk = {
+            "used_gb": round(du.used / 1e9, 1),
+            "total_gb": round(du.total / 1e9, 1),
+            "percent": round(100.0 * du.used / du.total, 1),
+        }
+    except Exception:
+        disk = None
+    try:
+        load1 = round(os.getloadavg()[0], 2)
+    except Exception:
+        load1 = None
+    return {
+        "temp_c": read_cpu_temp_c(),
+        "cpu_percent": _read_cpu_percent(),
+        "load1": load1,
+        "cpu_freq_mhz": _read_cpu_freq_mhz(),
+        "mem": {"used_mb": used_mb, "total_mb": total_mb, "percent": mem_pct},
+        "disk": disk,
+        "uptime_s": _read_uptime(),
+        "voltage_v": _read_voltage(),
+        "throttled": _read_throttled(),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -793,6 +930,12 @@ def led_status():
 def system_temp():
     """Onboard SoC temperature in degrees Celsius."""
     return jsonify({"temp_c": read_cpu_temp_c()})
+
+
+@app.route("/system/health")
+def system_health():
+    """Aggregate Pi 5 health metrics (temp, CPU, memory, disk, power)."""
+    return jsonify(read_health())
 
 
 # -- Stepper motors ---------------------------------------------------------
