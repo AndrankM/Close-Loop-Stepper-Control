@@ -203,13 +203,18 @@ class StepperMotor:
 
     # -- public API ---------------------------------------------------------
     def enable(self):
+        """Energize the coils and HOLD position — does not move on its own.
+
+        The motor only emits step pulses (moves) when ``run_pulses()`` is
+        called (by the jog control or the playback positioner). Enabling alone
+        just locks the joint in place, so clicking "Enable" never spins it.
+        """
         with self._lock:
             if self.enabled:
-                # Already energized — but it may be in a position-HOLD (paused)
-                # from teach/playback. Resume pulses so the motor actually runs
-                # instead of silently staying held.
+                # Already energized; settle into a safe hold (no motion) until
+                # something explicitly requests pulses (jog / playback).
                 self._soft_stop.clear()
-                self._pause.clear()
+                self._pause.set()
                 self.stopping = False
                 return
             self.enabled = True
@@ -220,7 +225,7 @@ class StepperMotor:
                 self._en.on()  # energize (handles active-low)
             self._stop.clear()
             self._soft_stop.clear()
-            self._pause.clear()
+            self._pause.set()  # start HELD: energized but not moving
             self._thread = threading.Thread(target=self._run, daemon=True)
             self._thread.start()
 
@@ -811,6 +816,34 @@ def motor_direction(mid):
         motor.set_direction(direction)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
+    return jsonify(motor.status())
+
+
+@app.route("/motor/<int:mid>/jog", methods=["POST"])
+def motor_jog(mid):
+    """Momentary jog: move only while the button is held.
+
+    Body: ``{"direction": "cw"|"ccw", "on": true|false}``. With ``on`` true the
+    motor energizes (if needed) and emits step pulses in the given direction;
+    with ``on`` false it stops emitting pulses but stays energized (holds
+    position). The motor never moves from the Enable button — only from here.
+    """
+    motor = get_motor(mid)
+    if motor is None:
+        return jsonify({"error": "unknown motor"}), 404
+    data = request.get_json(silent=True) or {}
+    on = bool(data.get("on", True))
+    if on:
+        direction = data.get("direction")
+        if direction is not None:
+            try:
+                motor.set_direction(direction)
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+        motor.enable()       # energize + start worker (held)
+        motor.run_pulses()   # release the hold -> move while pressed
+    else:
+        motor.hold()         # stop moving, stay energized
     return jsonify(motor.status())
 
 

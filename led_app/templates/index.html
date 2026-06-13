@@ -155,12 +155,6 @@
     }
 
     .dir-toggle { display: flex; gap: 0.5rem; }
-    .dir-toggle button {
-      padding: 0.5rem 1rem;
-      background: #2a2d3e;
-      color: #cfd6ee;
-    }
-    .dir-toggle button.active { background: #4a78ff; color: #fff; }
 
     .jog-toggle { display: flex; gap: 0.5rem; }
     .btn-jog {
@@ -524,14 +518,6 @@
             </p>
 
             <div class="control-row">
-              <label>Direction</label>
-              <div class="dir-toggle">
-                <button id="dir-cw-${i}"  onclick="setDirection(${i}, 'cw')">CW &#8635;</button>
-                <button id="dir-ccw-${i}" onclick="setDirection(${i}, 'ccw')">CCW &#8634;</button>
-              </div>
-            </div>
-
-            <div class="control-row">
               <label>Jog (hold)</label>
               <div class="jog-toggle">
                 <button id="jog-ccw-${i}" class="btn-jog"
@@ -676,8 +662,6 @@
 
     // ---------------- Stepper motor ----------------
     function applyMotor(i, s) {
-      el('dir-cw', i).classList.toggle('active', s.direction === 'cw');
-      el('dir-ccw', i).classList.toggle('active', s.direction === 'ccw');
       el('speed-slider', i).value = s.speed;
       el('speed-label', i).textContent = s.speed;
       el('rpm-label', i).textContent = s.rpm;
@@ -741,7 +725,7 @@
 
     function softStop(i) { postJSON(i, 'disable', { soft: true }); }
     function hardStop(i) { postJSON(i, 'disable', { soft: false }); }
-    function setDirection(i, dir) { postJSON(i, 'direction', { direction: dir }); }
+
 
     // ---- Global emergency stop: hard-stop ALL motors + any playback ----
     async function estopAll() {
@@ -777,8 +761,8 @@
       if (!u || u.jogging) return;
       u.jogging = dir;
       btn.classList.add('jogging');
-      postJSON(i, 'direction', { direction: dir });
-      setMotor(i, 'enable');
+      // Move only while held: energize + emit pulses in this direction.
+      postJSON(i, 'jog', { direction: dir, on: true });
     }
     function jogStop(e, i) {
       const u = units[i];
@@ -787,7 +771,8 @@
       u.jogging = null;
       const btn = el(`jog-${dir}`, i);
       if (btn) btn.classList.remove('jogging');
-      softStop(i);
+      // Stop moving but stay energized (holds position).
+      postJSON(i, 'jog', { on: false });
     }
 
     function setRpm(i) {
