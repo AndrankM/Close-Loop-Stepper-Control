@@ -436,29 +436,36 @@ class StepperMotor:
             dt = now - last
             last = now
 
-            # Position-hold: stay energized but emit no step pulses.
-            if self._pause.is_set() and not self._soft_stop.is_set():
-                self.current_speed = 0.0
-                if self._step is not None:
-                    self._step.value = 0.0
-                time.sleep(RAMP_DT)
-                continue
+            # The target is the running speed while actively jogging/driving,
+            # or zero when held (jog released) or soft-stopping. current_speed
+            # always eases toward the target at the configured accel rate, so
+            # BOTH the ramp-up and the ramp-down are smooth — a trapezoidal
+            # velocity profile rather than an abrupt start/stop.
+            held = self._pause.is_set()
+            soft = self._soft_stop.is_set()
+            target = 0.0 if (held or soft) else float(self.speed)
 
-            # During a soft-stop the target eases to zero; once stopped, exit.
-            target = 0.0 if self._soft_stop.is_set() else float(self.speed)
             step_accel = self.accel * dt
             if self.current_speed < target:
                 self.current_speed = min(target, self.current_speed + step_accel)
             elif self.current_speed > target:
-                self.current_speed = max(target, self.current_speed - step_accel)
+                self.current_speed = max(0.0, self.current_speed - step_accel)
 
-            if self._soft_stop.is_set() and self.current_speed <= 0.0:
+            # A soft-stop fully ramps down, then exits the worker (de-energize).
+            if soft and self.current_speed <= 0.0:
                 break
 
-            speed = max(self.current_speed, float(MIN_SPEED))
-            if self._step is not None:
-                self._step.frequency = max(1, int(round(speed)))
-                self._step.value = 0.5  # 50% duty -> emit step pulses
+            if self.current_speed <= 0.0:
+                # Fully stopped: keep the coils energized but emit no pulses
+                # (position hold). The smooth ramp-down already happened above.
+                if self._step is not None:
+                    self._step.value = 0.0
+            else:
+                # Moving or decelerating: emit pulses at the live ramped speed.
+                speed = max(self.current_speed, float(MIN_SPEED))
+                if self._step is not None:
+                    self._step.frequency = max(1, int(round(speed)))
+                    self._step.value = 0.5  # 50% duty -> emit step pulses
             time.sleep(RAMP_DT)
 
         # Worker is exiting (soft ramp-down completed). Stop pulses, de-energize
