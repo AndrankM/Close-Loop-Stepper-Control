@@ -17,11 +17,29 @@ the app reports its RPM and rotation relative to the geared output shaft.
 - **Four independent motors** — each with its own control card and live encoder card.
 - **Motor control** — enable/disable, direction (CW/CCW), speed (steps/s), and
   target RPM.
-- **Hold-to-jog** — momentary CW/CCW jog buttons on each motor: the motor runs
-  while the button is held and soft-stops the instant it is released (works with
-  mouse and touch, with pointer capture so it stops even if the pointer slides off).
+- **Hold-to-jog (jog-only motion)** — momentary CW/CCW jog buttons on each motor:
+  the motor runs only while the button is held and ramps to a stop the instant it
+  is released (works with mouse and touch, with pointer capture so it stops even if
+  the pointer slides off). **Enable only energizes and holds** the joint in
+  place — it never spins the motor on its own; all motion comes from jog or
+  playback.
+- **Trapezoidal acceleration / deceleration** — the live speed eases toward the
+  target and back down to zero at a configurable acceleration (steps/s²), giving a
+  symmetric trapezoidal velocity profile with smooth starts *and* stops.
+- **End-stop limit switches (Motor 3)** — two hardware limit switches stop the
+  motor the instant the end stop for its current travel direction is hit, while
+  still allowing it to jog back off. Live CW/CCW indicators and an `END STOP` state
+  appear on the Motor 3 card.
 - **Teach &amp; playback** — record encoder poses and play them back as coordinated
   motion, Dobot-style (see [Teach &amp; playback](#teach--playback)).
+- **Raspberry Pi 5 health monitoring** — a header temperature chip plus a
+  collapsible health card showing CPU usage/load/frequency, SoC temperature,
+  memory, disk, swap, uptime, network (IP + live throughput), active-cooler fan
+  RPM, board power draw (V / A / W from the PMIC), and undervoltage/throttling
+  flags (see [Pi 5 health](#raspberry-pi-5-health)).
+- **Emotion detection page** — a separate `/emotion` view that overlays a detected
+  face box, landmarks, dominant-emotion verdict, and per-emotion bars on the camera
+  feed.
 - **Global emergency stop** — a prominent header button plus a sticky floating
   button immediately hard-stop **all** motors and any running playback at once.
 - **Hardware-timed step pulses** — step signals are generated with hardware PWM
@@ -56,6 +74,22 @@ the app reports its RPM and rotation relative to the geared output shaft.
 | 4     | Direct (1:1)     | GPIO 16 | GPIO 20 | GPIO 21 |
 
 `EN` is active-LOW on the SERVO42C; each motor's `GND` ties to the Pi `GND`.
+
+### End-stop limit switches (Motor 3)
+
+Motor 3 has two travel-limit switches. Each switch is wired to **3.3 V** (the Pi
+GPIO is 3.3 V tolerant only — **never wire a GPIO to 5 V**) so a pressed switch
+drives its pin HIGH; an internal pull-down holds it LOW when released.
+
+| Limit          | GPIO    | Idle  | Pressed |
+| -------------- | ------- | ----- | ------- |
+| CW travel      | GPIO 19 | LOW   | HIGH    |
+| CCW travel     | GPIO 26 | LOW   | HIGH    |
+
+When the switch for the direction the motor is currently travelling is pressed, the
+motor stops immediately and refuses to drive further that way; jogging the opposite
+direction backs it off the stop. If your switches are normally-closed, invert the
+logic in `app.py`.
 
 ### Encoder feedback (shared UART / TTL bus)
 
@@ -164,16 +198,20 @@ Routes are parameterized by motor id (`<mid>` = `1`–`4`).
 | Method | Route                     | Description                                 |
 | ------ | ------------------------- | ------------------------------------------- |
 | GET    | `/`                       | Dashboard UI                                |
-| POST   | `/motor/<mid>/enable`     | Energize and start the motor                |
+| POST   | `/motor/<mid>/enable`     | Energize and hold position (does not move)  |
 | POST   | `/motor/<mid>/disable`    | Stop the motor (`{"soft": true\|false}`)   |
+| POST   | `/motor/<mid>/jog`        | Momentary jog (`{"direction":"cw\|ccw","on":true\|false}`) |
 | POST   | `/motor/<mid>/direction`  | Set direction (`{"direction": "cw\|ccw"}`) |
 | POST   | `/motor/<mid>/speed`      | Set speed in steps/s (1–6000)               |
 | POST   | `/motor/<mid>/rpm`        | Set target RPM (output shaft)               |
 | POST   | `/motor/<mid>/geometry`   | Set full steps/rev and microstepping        |
 | POST   | `/motor/<mid>/accel`      | Set acceleration (steps/s²)                 |
-| GET    | `/motor/<mid>/status`     | Motor status JSON                           |
+| GET    | `/motor/<mid>/status`     | Motor status JSON (incl. limit switch state)|
 | GET    | `/motor/<mid>/encoder`    | Encoder reading JSON                        |
 | POST   | `/estop`                  | Emergency stop: hard-stop all motors + playback |
+| GET    | `/emotion`                | Emotion detection page                      |
+| GET    | `/system/temp`            | Pi 5 SoC temperature JSON                   |
+| GET    | `/system/health`          | Pi 5 health JSON (CPU, memory, disk, swap, network, fan, power, throttling) |
 
 ### Teach &amp; playback API
 
@@ -239,13 +277,34 @@ Closed-loop tuning constants live in `app.py`: `POS_TOLERANCE_COUNTS` (stop band
 `POS_KP` (proportional gain), `POS_TIMEOUT_S`, `POS_APPROACH_MIN_SPS`, and
 `POS_SAFE_SPS` (speed cap until direction is confirmed).
 
+## Raspberry Pi 5 health
+
+The dashboard header shows a live **temperature chip**; click it to expand a
+collapsible **health card** that polls `/system/health` every few seconds and shows:
+
+- **CPU** — utilisation %, 1-minute load average, and current core frequency
+- **Temperature** — SoC temperature with a bar scaled to the 85 °C limit
+- **Memory** and **Swap** — used / total with usage bars
+- **Disk (/)** — used / total with a usage bar
+- **Network** — primary IPv4 address, active interface, and live RX/TX throughput
+- **Fan** — Raspberry Pi 5 active-cooler tachometer (RPM)
+- **Power draw** — total board power in watts, derived from the PMIC per-rail
+  voltages and currents (`vcgencmd pmic_read_adc`), with the 5 V input voltage and
+  estimated input current
+- **Power &amp; throttling** — undervoltage / frequency-cap / throttling / soft
+  temperature-limit flags (`vcgencmd get_throttled`), highlighted red when active
+
+These readings use only the Python standard library plus `vcgencmd`, and each metric
+degrades gracefully (`n/a`) on hardware that does not expose it.
+
 ## Project structure
 
 ```
 led_app/
-  app.py               Flask backend: motor control + encoder readers + arm
+  app.py               Flask backend: motor control + encoder readers + arm + Pi health
   templates/
-    index.html         Dashboard UI (per-motor controls + live encoder + teach/playback)
+    index.html         Dashboard UI (per-motor controls + live encoder + teach/playback + Pi health)
+    emotion.html       Emotion detection page (face box, landmarks, emotion bars)
   programs/            Saved teach/playback programs (JSON, created at runtime)
   speedtest.py         Measures actual motor speed via the encoder
   redeploy.ps1         Deploy script (scp + restart service over SSH)
