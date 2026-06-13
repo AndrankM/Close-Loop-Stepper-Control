@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import socket
 import threading
 import time
 import shutil
@@ -166,6 +167,81 @@ def _read_throttled():
     return {"raw": raw.split("=")[1], "active": active, "past": past, "ok": not active}
 
 
+def _read_swap():
+    """Return (used_mb, total_mb, percent) of swap from /proc/meminfo."""
+    try:
+        info = {}
+        with open("/proc/meminfo", "r") as f:
+            for line in f:
+                key, _, rest = line.partition(":")
+                if key in ("SwapTotal", "SwapFree"):
+                    info[key] = int(rest.strip().split()[0])  # kB
+        total = info.get("SwapTotal", 0)
+        free = info.get("SwapFree", 0)
+        used = total - free
+        pct = round(100.0 * used / total, 1) if total else 0.0
+        return round(used / 1024.0), round(total / 1024.0), pct
+    except Exception:
+        return None, None, None
+
+
+# Cached /proc/net/dev counters + timestamp so throughput is a per-second rate.
+_net_prev = {"t": 0.0, "rx": 0, "tx": 0}
+
+
+def _read_network():
+    """Primary IPv4 address plus RX/TX throughput in kB/s since the last call."""
+    result = {"ip": None, "iface": None, "rx_kbps": None, "tx_kbps": None}
+    # Best-effort source IP via a dummy UDP socket (no packets are sent).
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            result["ip"] = s.getsockname()[0]
+        finally:
+            s.close()
+    except Exception:
+        pass
+    try:
+        rx_total = tx_total = 0
+        iface = None
+        with open("/proc/net/dev", "r") as f:
+            for line in f:
+                if ":" not in line:
+                    continue
+                name, _, data = line.partition(":")
+                name = name.strip()
+                if name == "lo":
+                    continue
+                cols = data.split()
+                rx_total += int(cols[0])
+                tx_total += int(cols[8])
+                if iface is None and int(cols[0]) > 0:
+                    iface = name
+        result["iface"] = iface
+        now = time.time()
+        dt = now - _net_prev["t"]
+        if _net_prev["t"] and dt > 0:
+            result["rx_kbps"] = round((rx_total - _net_prev["rx"]) / dt / 1024.0, 1)
+            result["tx_kbps"] = round((tx_total - _net_prev["tx"]) / dt / 1024.0, 1)
+        _net_prev.update({"t": now, "rx": rx_total, "tx": tx_total})
+    except Exception:
+        pass
+    return result
+
+
+def _read_fan_rpm():
+    """Pi 5 active-cooler tachometer (fan1_input under any hwmon node), or None."""
+    try:
+        import glob
+        for path in glob.glob("/sys/class/hwmon/hwmon*/fan1_input"):
+            with open(path, "r") as f:
+                return int(f.read().strip())
+    except Exception:
+        pass
+    return None
+
+
 def read_health():
     """Aggregate Pi health metrics into one dict for the UI."""
     used_mb, total_mb, mem_pct = _read_meminfo()
@@ -182,16 +258,20 @@ def read_health():
         load1 = round(os.getloadavg()[0], 2)
     except Exception:
         load1 = None
+    swap_used, swap_total, swap_pct = _read_swap()
     return {
         "temp_c": read_cpu_temp_c(),
         "cpu_percent": _read_cpu_percent(),
         "load1": load1,
         "cpu_freq_mhz": _read_cpu_freq_mhz(),
         "mem": {"used_mb": used_mb, "total_mb": total_mb, "percent": mem_pct},
+        "swap": {"used_mb": swap_used, "total_mb": swap_total, "percent": swap_pct},
         "disk": disk,
         "uptime_s": _read_uptime(),
         "voltage_v": _read_voltage(),
         "throttled": _read_throttled(),
+        "net": _read_network(),
+        "fan_rpm": _read_fan_rpm(),
     }
 
 

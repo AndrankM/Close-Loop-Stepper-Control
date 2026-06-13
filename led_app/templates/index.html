@@ -535,6 +535,22 @@
         <div class="hc-sub" id="hc-disk-sub">-- / -- GB</div>
       </div>
       <div class="hc-item">
+        <div class="hc-label">Swap</div>
+        <div class="hc-value" id="hc-swap">--</div>
+        <div class="hc-bar"><span id="hc-swap-bar"></span></div>
+        <div class="hc-sub" id="hc-swap-sub">-- / -- MB</div>
+      </div>
+      <div class="hc-item">
+        <div class="hc-label">Network</div>
+        <div class="hc-value" id="hc-net">--</div>
+        <div class="hc-sub" id="hc-net-rate">&#8595; -- &#8593; -- kB/s</div>
+      </div>
+      <div class="hc-item">
+        <div class="hc-label">Fan</div>
+        <div class="hc-value" id="hc-fan">--</div>
+        <div class="hc-sub" id="hc-fan-sub">active cooler</div>
+      </div>
+      <div class="hc-item">
         <div class="hc-label">Uptime</div>
         <div class="hc-value" id="hc-uptime">--</div>
         <div class="hc-sub" id="hc-volt">-- V core</div>
@@ -1139,6 +1155,21 @@
         $h('hc-disk').textContent = disk.percent != null ? disk.percent + '%' : '--';
         setBar('hc-disk-bar', disk.percent, 80, 92);
         $h('hc-disk-sub').textContent = (disk.used_gb != null ? disk.used_gb : '--') + ' / ' + (disk.total_gb != null ? disk.total_gb : '--') + ' GB';
+
+        // Swap
+        const swap = d.swap || {};
+        $h('hc-swap').textContent = swap.percent != null ? swap.percent + '%' : '--';
+        setBar('hc-swap-bar', swap.percent, 25, 60);
+        $h('hc-swap-sub').textContent = (swap.used_mb != null ? swap.used_mb : '--') + ' / ' + (swap.total_mb != null ? swap.total_mb : '--') + ' MB';
+
+        // Network
+        const net = d.net || {};
+        $h('hc-net').textContent = net.ip ? net.ip : '--';
+        $h('hc-net-rate').innerHTML = '\u2193 ' + (net.rx_kbps != null ? net.rx_kbps : '--') + ' \u2191 ' + (net.tx_kbps != null ? net.tx_kbps : '--') + ' kB/s' + (net.iface ? ' \u00b7 ' + net.iface : '');
+
+        // Fan
+        $h('hc-fan').textContent = d.fan_rpm != null ? d.fan_rpm + ' RPM' : 'n/a';
+        $h('hc-fan-sub').textContent = d.fan_rpm != null ? (d.fan_rpm === 0 ? 'idle (passive)' : 'active cooler') : 'no tachometer';
 
         // Uptime + voltage
         $h('hc-uptime').textContent = fmtUptime(d.uptime_s);
