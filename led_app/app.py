@@ -43,6 +43,22 @@ def read_brightness():
 
 
 # ---------------------------------------------------------------------------
+# Onboard SoC temperature
+# ---------------------------------------------------------------------------
+CPU_TEMP_PATH = "/sys/class/thermal/thermal_zone0/temp"
+
+
+def read_cpu_temp_c():
+    """Return the Pi SoC temperature in degrees Celsius, or None if unavailable."""
+    try:
+        with open(CPU_TEMP_PATH, "r") as f:
+            milli = int(f.read().strip())
+        return round(milli / 1000.0, 1)
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
 # NEMA 17 + MKS SERVO42C stepper control
 #   Motor 1:  EN -> GPIO 17   STP -> GPIO 27   DIR -> GPIO 22
 #   Motor 2:  EN -> GPIO 2    STP -> GPIO 3    DIR -> GPIO 4
@@ -771,6 +787,12 @@ def led_off():
 def led_status():
     brightness = read_brightness()
     return jsonify({"status": "on" if brightness == "0" else "off"})
+
+
+@app.route("/system/temp")
+def system_temp():
+    """Onboard SoC temperature in degrees Celsius."""
+    return jsonify({"temp_c": read_cpu_temp_c()})
 
 
 # -- Stepper motors ---------------------------------------------------------

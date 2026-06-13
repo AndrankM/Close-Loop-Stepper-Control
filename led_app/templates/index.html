@@ -57,6 +57,17 @@
       margin-top: 0;
     }
 
+    .cpu-temp {
+      font-size: 0.8rem;
+      color: #9fe6c2;
+      border: 1px solid #2a3650;
+      border-radius: 8px;
+      padding: 0.3rem 0.7rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .cpu-temp.warm { color: #fbbf24; border-color: #5b4a12; }
+    .cpu-temp.hot  { color: #ff7676; border-color: #5b1a1a; }
+
     h1 {
       font-size: 1.8rem;
       letter-spacing: 0.05em;
@@ -441,8 +452,9 @@
     <h1>Closed-Loop Stepper Control</h1>
     <div class="sub">4&times; NEMA 17 &middot; MKS SERVO42C</div>
     <button class="btn-estop-all" id="estop-all" onclick="estopAll()">&#9888; STOP ALL MOTORS</button>
-    <div style="margin-top:0.6rem;">
+    <div style="margin-top:0.6rem; display:flex; gap:0.5rem; justify-content:center; align-items:center; flex-wrap:wrap;">
       <a href="/emotion" style="color:#7dd3fc;font-size:0.8rem;text-decoration:none;border:1px solid #2a3650;border-radius:8px;padding:0.3rem 0.7rem;display:inline-block;">&#128247; Emotion detection</a>
+      <span class="cpu-temp" id="cpu-temp" title="Raspberry Pi 5 SoC temperature">&#127777; Pi <span id="cpu-temp-val">--</span>&deg;C</span>
     </div>
   </div>
 
@@ -964,6 +976,29 @@
       };
       setTimeout(scheduleEncoder, m.id * 120);
     });
+
+    // ---------------- Pi 5 SoC temperature ----------------
+    async function pollCpuTemp() {
+      try {
+        const r = await fetch('/system/temp', { cache: 'no-store' });
+        const d = await r.json();
+        const chip = document.getElementById('cpu-temp');
+        const val = document.getElementById('cpu-temp-val');
+        if (d.temp_c === null || d.temp_c === undefined) {
+          val.textContent = 'n/a';
+          chip.classList.remove('warm', 'hot');
+        } else {
+          val.textContent = d.temp_c.toFixed(1);
+          chip.classList.toggle('hot', d.temp_c >= 75);
+          chip.classList.toggle('warm', d.temp_c >= 60 && d.temp_c < 75);
+        }
+      } catch (e) {
+        const val = document.getElementById('cpu-temp-val');
+        if (val) val.textContent = '--';
+      }
+    }
+    pollCpuTemp();
+    setInterval(pollCpuTemp, 4000);
 
     // ---------------- Teach & Playback ----------------
     const waypoints = [];      // [{ pose:{1:counts,...}, angles:{1:deg,...}, dwell:Number|null }]
