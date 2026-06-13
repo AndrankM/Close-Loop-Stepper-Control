@@ -229,6 +229,24 @@
     .btn-jog:hover { background: #34384d; }
     .btn-jog.jogging { background: #00a86b; color: #fff; }
 
+    .limit-row {
+      display: flex; align-items: center; gap: 0.6rem;
+      margin: 0.25rem 0 1rem;
+    }
+    .limit-row > label { color: #8b93ad; font-size: 0.82rem; }
+    .limit-pill {
+      display: inline-flex; align-items: center; gap: 0.35rem;
+      padding: 0.28rem 0.6rem; border-radius: 999px;
+      background: #21283b; border: 1px solid #2a3650;
+      color: #8b93ad; font-size: 0.74rem; font-weight: 600;
+    }
+    .limit-pill .ld {
+      width: 9px; height: 9px; border-radius: 50%;
+      background: #39405a;
+    }
+    .limit-pill.pressed { background: #3a1414; border-color: #5b1a1a; color: #ff9b9b; }
+    .limit-pill.pressed .ld { background: #ff5a5a; box-shadow: 0 0 6px #ff5a5a; }
+
     .speed-value {
       font-weight: bold;
       color: #a0cfff;
@@ -621,7 +639,7 @@
     const MOTORS = [
       { id: 1, name: 'Motor 1', gear: 1, wiring: 'EN GPIO17 · STP GPIO27 · DIR GPIO22 · addr 0xE0 · direct drive' },
       { id: 2, name: 'Motor 2', gear: 5, wiring: 'EN GPIO2 · STP GPIO3 · DIR GPIO4 · addr 0xE1 · 5:1 planetary' },
-      { id: 3, name: 'Motor 3', gear: 1, wiring: 'EN GPIO10 · STP GPIO9 · DIR GPIO11 · addr 0xE2 · direct drive' },
+      { id: 3, name: 'Motor 3', gear: 1, limits: true, wiring: 'EN GPIO10 · STP GPIO9 · DIR GPIO11 · addr 0xE2 · direct drive · end-stops GPIO19(CW)/GPIO26(CCW)' },
       { id: 4, name: 'Motor 4', gear: 1, wiring: 'EN GPIO16 · STP GPIO20 · DIR GPIO21 · addr 0xE3 · direct drive' },
     ];
 
@@ -656,6 +674,12 @@
                         oncontextmenu="return false">CW &#8635;</button>
               </div>
             </div>
+${m.limits ? `
+            <div class="limit-row">
+              <label>End stops</label>
+              <span class="limit-pill" id="limit-ccw-${i}" title="CCW travel limit (GPIO26)"><span class="ld"></span>&#8634; CCW</span>
+              <span class="limit-pill" id="limit-cw-${i}" title="CW travel limit (GPIO19)"><span class="ld"></span>CW &#8635;</span>
+            </div>` : ''}
 
             <div class="control-row">
               <label>Speed</label>
@@ -796,7 +820,10 @@
 
     function updateLive(i, s) {
       const state = el('motor-state', i);
-      if (s.stopping) {
+      if (s.limit_stop) {
+        state.textContent = 'END STOP';
+        state.style.color = '#ff7676';
+      } else if (s.stopping) {
         state.textContent = 'STOPPING';
         state.style.color = '#ffb84a';
       } else if (s.enabled) {
@@ -808,7 +835,13 @@
       }
       el('live-rpm', i).textContent = s.current_rpm;
       el('live-sps', i).textContent = s.current_speed;
-      updateLivePolling(i, s.enabled || s.stopping);
+      if (s.limits) {
+        const cw = document.getElementById(`limit-cw-${i}`);
+        const ccw = document.getElementById(`limit-ccw-${i}`);
+        if (cw) cw.classList.toggle('pressed', !!s.limits.cw);
+        if (ccw) ccw.classList.toggle('pressed', !!s.limits.ccw);
+      }
+      updateLivePolling(i, s.enabled || s.stopping || (s.limits && (s.limits.cw || s.limits.ccw)));
     }
 
     function updateLivePolling(i, running) {
@@ -1085,6 +1118,12 @@
         pollEncoder(m.id).finally(() => setTimeout(scheduleEncoder, ENC_POLL_MS));
       };
       setTimeout(scheduleEncoder, m.id * 120);
+
+      // End-stop equipped motors poll their status slowly even when idle so the
+      // limit indicators stay live (status reads don't touch the serial bus).
+      if (m.limits) {
+        setInterval(() => { if (units[m.id].liveTimer === null) pollLive(m.id); }, 600);
+      }
     });
 
     // ---------------- Pi 5 health ----------------

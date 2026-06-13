@@ -10,12 +10,13 @@ import subprocess
 from flask import Flask, jsonify, render_template, request
 
 try:
-    from gpiozero import DigitalOutputDevice, PWMOutputDevice
+    from gpiozero import DigitalOutputDevice, PWMOutputDevice, DigitalInputDevice
 
     GPIO_AVAILABLE = True
 except Exception:  # gpiozero not installed / not running on a Pi
     DigitalOutputDevice = None
     PWMOutputDevice = None
+    DigitalInputDevice = None
     GPIO_AVAILABLE = False
 
 try:
@@ -346,6 +347,15 @@ MOTOR2_GEAR_RATIO = 5.0
 MOTOR3_GEAR_RATIO = 1.0
 MOTOR4_GEAR_RATIO = 1.0
 
+# Motor 3 end-stop limit switches. Each switch is wired to 3.3V (NOT 5V — the
+# Pi GPIOs are 3.3V only) so a pressed switch drives the pin HIGH; an internal
+# pull-down holds it LOW when released. The CCW-travel limit is on GPIO 26 and
+# the CW-travel limit on GPIO 19. When the switch for the direction the motor
+# is currently travelling is pressed, the motor stops immediately; jog the
+# opposite direction to back off the end stop.
+M3_LIMIT_CW_PIN = 19
+M3_LIMIT_CCW_PIN = 26
+
 # Driver enable pin is active-LOW: drive LOW to energize the coils.
 EN_ACTIVE_LOW = True
 
@@ -389,7 +399,8 @@ def _clamp(value, lo, hi):
 class StepperMotor:
     """Generates step pulses on a background thread while the motor is enabled."""
 
-    def __init__(self, en_pin, stp_pin, dir_pin, gear_ratio=1.0):
+    def __init__(self, en_pin, stp_pin, dir_pin, gear_ratio=1.0,
+                 cw_limit_pin=None, ccw_limit_pin=None):
         self._lock = threading.Lock()
         self.enabled = False
         self.stopping = False
@@ -400,6 +411,8 @@ class StepperMotor:
         self.full_steps_per_rev = DEFAULT_FULL_STEPS_PER_REV
         self.microstepping = DEFAULT_MICROSTEPPING
         self.gear_ratio = float(gear_ratio) or 1.0  # motor revs : output revs
+        # True while an end-stop for the current direction is forcing a stop.
+        self.limit_stop = False
         self._stop = threading.Event()
         self._soft_stop = threading.Event()
         # When set, the worker keeps the coils energized but emits no pulses
@@ -421,8 +434,19 @@ class StepperMotor:
                 stp_pin, frequency=max(1, int(DEFAULT_SPEED)), initial_value=0.0
             )
             self._dir = DigitalOutputDevice(dir_pin, initial_value=False)
+            # Optional end-stop switches: pull-down so idle reads LOW and a
+            # press (3.3V) reads HIGH (is_active True). Small debounce.
+            self._cw_limit = (
+                DigitalInputDevice(cw_limit_pin, pull_up=False, bounce_time=0.005)
+                if cw_limit_pin is not None else None
+            )
+            self._ccw_limit = (
+                DigitalInputDevice(ccw_limit_pin, pull_up=False, bounce_time=0.005)
+                if ccw_limit_pin is not None else None
+            )
         else:
             self._en = self._step = self._dir = None
+            self._cw_limit = self._ccw_limit = None
 
     # -- worker -------------------------------------------------------------
     def _run(self):
@@ -443,7 +467,17 @@ class StepperMotor:
             # velocity profile rather than an abrupt start/stop.
             held = self._pause.is_set()
             soft = self._soft_stop.is_set()
-            target = 0.0 if (held or soft) else float(self.speed)
+
+            # End-stop: if the limit switch for the direction the motor is
+            # currently travelling is pressed, force an immediate stop and
+            # refuse to drive further that way. The opposite direction (to back
+            # off the switch) is still allowed.
+            limited = self._limit_active()
+            self.limit_stop = limited
+            if limited:
+                self.current_speed = 0.0
+
+            target = 0.0 if (held or soft or limited) else float(self.speed)
 
             step_accel = self.accel * dt
             if self.current_speed < target:
@@ -471,6 +505,7 @@ class StepperMotor:
         # Worker is exiting (soft ramp-down completed). Stop pulses, de-energize
         # and clear state so the motor is fully stopped without blocking.
         self.current_speed = 0.0
+        self.limit_stop = False
         if self._step is not None:
             self._step.value = 0.0  # stop emitting pulses
         if self._en is not None:
@@ -611,6 +646,29 @@ class StepperMotor:
         else:
             self._dir.off()
 
+    def _limit_active(self):
+        """True if the end-stop for the CURRENT travel direction is pressed."""
+        dev = self._cw_limit if self.direction == "cw" else self._ccw_limit
+        try:
+            return dev is not None and bool(dev.is_active)
+        except Exception:
+            return False
+
+    def _limit_state(self):
+        """Per-switch pressed state, or None if this motor has no end stops."""
+        if self._cw_limit is None and self._ccw_limit is None:
+            return None
+
+        def _read(dev):
+            if dev is None:
+                return None
+            try:
+                return bool(dev.is_active)
+            except Exception:
+                return None
+
+        return {"cw": _read(self._cw_limit), "ccw": _read(self._ccw_limit)}
+
     def status(self):
         return {
             "enabled": self.enabled,
@@ -625,6 +683,8 @@ class StepperMotor:
             "microstepping": self.microstepping,
             "steps_per_rev": self._steps_per_rev(),
             "gear_ratio": self.gear_ratio,
+            "limit_stop": self.limit_stop,
+            "limits": self._limit_state(),
             "gpio": GPIO_AVAILABLE,
         }
 
@@ -632,7 +692,10 @@ class StepperMotor:
 motors = {
     1: StepperMotor(EN_PIN, STP_PIN, DIR_PIN, MOTOR1_GEAR_RATIO),
     2: StepperMotor(EN2_PIN, STP2_PIN, DIR2_PIN, MOTOR2_GEAR_RATIO),
-    3: StepperMotor(EN3_PIN, STP3_PIN, DIR3_PIN, MOTOR3_GEAR_RATIO),
+    3: StepperMotor(
+        EN3_PIN, STP3_PIN, DIR3_PIN, MOTOR3_GEAR_RATIO,
+        cw_limit_pin=M3_LIMIT_CW_PIN, ccw_limit_pin=M3_LIMIT_CCW_PIN,
+    ),
     4: StepperMotor(EN4_PIN, STP4_PIN, DIR4_PIN, MOTOR4_GEAR_RATIO),
 }
 
