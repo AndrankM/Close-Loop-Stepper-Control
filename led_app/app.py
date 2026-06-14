@@ -355,6 +355,7 @@ MOTOR4_GEAR_RATIO = 1.0
 # separate pin per switch. When the line trips the motor stops immediately and
 # refuses to drive further that way; jogging the opposite direction backs off.
 M3_LIMIT_PIN = 26
+M4_LIMIT_PIN = 19
 
 # Driver enable pin is active-LOW: drive LOW to energize the coils.
 EN_ACTIVE_LOW = True
@@ -695,7 +696,9 @@ motors = {
     3: StepperMotor(
         EN3_PIN, STP3_PIN, DIR3_PIN, MOTOR3_GEAR_RATIO, limit_pin=M3_LIMIT_PIN,
     ),
-    4: StepperMotor(EN4_PIN, STP4_PIN, DIR4_PIN, MOTOR4_GEAR_RATIO),
+    4: StepperMotor(
+        EN4_PIN, STP4_PIN, DIR4_PIN, MOTOR4_GEAR_RATIO, limit_pin=M4_LIMIT_PIN,
+    ),
 }
 
 
