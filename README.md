@@ -26,10 +26,10 @@ the app reports its RPM and rotation relative to the geared output shaft.
 - **Trapezoidal acceleration / deceleration** — the live speed eases toward the
   target and back down to zero at a configurable acceleration (steps/s²), giving a
   symmetric trapezoidal velocity profile with smooth starts *and* stops.
-- **End-stop limit switches (Motor 3)** — two hardware limit switches stop the
-  motor the instant the end stop for its current travel direction is hit, while
-  still allowing it to jog back off. Live CW/CCW indicators and an `END STOP` state
-  appear on the Motor 3 card.
+- **End-stop limit switches (Motor 3)** — two hardware limit switches on a single
+  shared GPIO line stop the motor the instant an end stop is hit (the travel
+  direction identifies which one), while still allowing it to jog back off. A live
+  end-stop indicator and an `END STOP` state appear on the Motor 3 card.
 - **Teach &amp; playback** — record encoder poses and play them back as coordinated
   motion, Dobot-style (see [Teach &amp; playback](#teach--playback)).
 - **Raspberry Pi 5 health monitoring** — a header temperature chip plus a
@@ -77,19 +77,20 @@ the app reports its RPM and rotation relative to the geared output shaft.
 
 ### End-stop limit switches (Motor 3)
 
-Motor 3 has two travel-limit switches. Each switch is wired to **3.3 V** (the Pi
-GPIO is 3.3 V tolerant only — **never wire a GPIO to 5 V**) so a pressed switch
-drives its pin HIGH; an internal pull-down holds it LOW when released.
+Motor 3 has two travel-limit switches sharing a **single GPIO line** (GPIO 26).
+Each switch is wired to **3.3 V** (the Pi GPIO is 3.3 V tolerant only — **never wire
+a GPIO to 5 V**) so a pressed switch drives the pin HIGH; an internal pull-down
+holds it LOW when released.
 
-| Limit          | GPIO    | Idle  | Pressed |
-| -------------- | ------- | ----- | ------- |
-| CW travel      | GPIO 19 | LOW   | HIGH    |
-| CCW travel     | GPIO 26 | LOW   | HIGH    |
+| Signal             | GPIO    | Idle  | Pressed |
+| ------------------ | ------- | ----- | ------- |
+| Shared travel limit| GPIO 26 | LOW   | HIGH    |
 
-When the switch for the direction the motor is currently travelling is pressed, the
-motor stops immediately and refuses to drive further that way; jogging the opposite
-direction backs it off the stop. If your switches are normally-closed, invert the
-logic in `app.py`.
+Only one end stop can be reached at a time, so the motor's **current travel
+direction** identifies which limit was hit — no separate pin per switch is needed.
+When the line trips, the motor stops immediately and that direction stays blocked
+until the switch releases; jogging the opposite direction backs it off. If your
+switches are normally-closed, invert the logic in `app.py`.
 
 ### Encoder feedback (shared UART / TTL bus)
 

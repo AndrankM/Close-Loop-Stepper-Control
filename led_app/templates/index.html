@@ -639,7 +639,7 @@
     const MOTORS = [
       { id: 1, name: 'Motor 1', gear: 1, wiring: 'EN GPIO17 · STP GPIO27 · DIR GPIO22 · addr 0xE0 · direct drive' },
       { id: 2, name: 'Motor 2', gear: 5, wiring: 'EN GPIO2 · STP GPIO3 · DIR GPIO4 · addr 0xE1 · 5:1 planetary' },
-      { id: 3, name: 'Motor 3', gear: 1, limits: true, wiring: 'EN GPIO10 · STP GPIO9 · DIR GPIO11 · addr 0xE2 · direct drive · end-stops GPIO19(CW)/GPIO26(CCW)' },
+      { id: 3, name: 'Motor 3', gear: 1, limits: true, wiring: 'EN GPIO10 · STP GPIO9 · DIR GPIO11 · addr 0xE2 · direct drive · end-stop GPIO26 (shared)' },
       { id: 4, name: 'Motor 4', gear: 1, wiring: 'EN GPIO16 · STP GPIO20 · DIR GPIO21 · addr 0xE3 · direct drive' },
     ];
 
@@ -676,9 +676,8 @@
             </div>
 ${m.limits ? `
             <div class="limit-row">
-              <label>End stops</label>
-              <span class="limit-pill" id="limit-ccw-${i}" title="CCW travel limit (GPIO26)"><span class="ld"></span>&#8634; CCW</span>
-              <span class="limit-pill" id="limit-cw-${i}" title="CW travel limit (GPIO19)"><span class="ld"></span>CW &#8635;</span>
+              <label>End stop</label>
+              <span class="limit-pill" id="limit-${i}" title="Shared travel limit (GPIO26)"><span class="ld"></span><span id="limit-text-${i}">open</span></span>
             </div>` : ''}
 
             <div class="control-row">
@@ -820,8 +819,10 @@ ${m.limits ? `
 
     function updateLive(i, s) {
       const state = el('motor-state', i);
+      const lim = s.limit;
       if (s.limit_stop) {
-        state.textContent = 'END STOP';
+        const d = lim && lim.blocked_dir ? ' (' + lim.blocked_dir.toUpperCase() + ')' : '';
+        state.textContent = 'END STOP' + d;
         state.style.color = '#ff7676';
       } else if (s.stopping) {
         state.textContent = 'STOPPING';
@@ -835,13 +836,17 @@ ${m.limits ? `
       }
       el('live-rpm', i).textContent = s.current_rpm;
       el('live-sps', i).textContent = s.current_speed;
-      if (s.limits) {
-        const cw = document.getElementById(`limit-cw-${i}`);
-        const ccw = document.getElementById(`limit-ccw-${i}`);
-        if (cw) cw.classList.toggle('pressed', !!s.limits.cw);
-        if (ccw) ccw.classList.toggle('pressed', !!s.limits.ccw);
+      if (lim) {
+        const pill = document.getElementById(`limit-${i}`);
+        const txt = document.getElementById(`limit-text-${i}`);
+        if (pill) pill.classList.toggle('pressed', !!lim.pressed);
+        if (txt) {
+          txt.textContent = lim.pressed
+            ? (lim.blocked_dir ? 'blocked ' + lim.blocked_dir.toUpperCase() : 'pressed')
+            : 'open';
+        }
       }
-      updateLivePolling(i, s.enabled || s.stopping || (s.limits && (s.limits.cw || s.limits.ccw)));
+      updateLivePolling(i, s.enabled || s.stopping || (lim && lim.pressed));
     }
 
     function updateLivePolling(i, running) {
