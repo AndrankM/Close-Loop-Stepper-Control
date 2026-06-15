@@ -338,11 +338,11 @@ EN4_PIN = 16
 STP4_PIN = 20
 DIR4_PIN = 21
 
-# Gearbox reduction (motor revs : output revs). Motor 1 is direct-drive;
-# motor 2 has a 5:1 planetary reducer, so its output shaft turns 5x slower
-# than the motor shaft (and the encoder, which sits on the motor shaft).
-# Motors 3 and 4 default to direct-drive (1:1); change if they have reducers.
-MOTOR1_GEAR_RATIO = 1.0
+# Gearbox reduction (motor revs : output revs). Motors 1 and 2 each run through a
+# 5:1 planetary reducer, so their output shafts turn 5x slower than the motor
+# shaft (and the encoder, which sits on the motor shaft). Motors 3 and 4 default
+# to direct-drive (1:1); change if they have reducers.
+MOTOR1_GEAR_RATIO = 5.0
 MOTOR2_GEAR_RATIO = 5.0
 MOTOR3_GEAR_RATIO = 1.0
 MOTOR4_GEAR_RATIO = 1.0

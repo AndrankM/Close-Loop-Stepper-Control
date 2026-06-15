@@ -9,8 +9,9 @@ encoders over the serial port. A single-page dashboard provides per-motor motion
 control plus a live encoder readout — angle dial, rotation counter, and a real-time
 chart — for each motor.
 
-Most motors are direct-drive; motor 2 runs through a **5:1 planetary reducer**, and
-the app reports its RPM and rotation relative to the geared output shaft.
+Motors 3 and 4 are direct-drive; motors 1 and 2 each run through a **5:1 planetary
+reducer**, and the app reports their RPM and rotation relative to the geared output
+shaft.
 
 ## Features
 
@@ -47,8 +48,8 @@ the app reports its RPM and rotation relative to the geared output shaft.
   (frequency = step rate), giving accurate, linear speed control up to 6000 steps/s.
 - **Acceleration ramp** — smooth ramp toward the target speed with a configurable
   acceleration (steps/s²).
-- **Gear-ratio aware** — per-motor gear ratios (e.g. motor 2's 5:1 planetary
-  reducer) are applied so RPM and encoder turns/angle are reported at the
+- **Gear-ratio aware** — per-motor gear ratios (e.g. motors 1 and 2's 5:1 planetary
+  reducers) are applied so RPM and encoder turns/angle are reported at the
   **output shaft**.
 - **Soft stop & emergency stop** — ramp-down disable or immediate de-energize.
 - **RPM from geometry** — converts steps/s ↔ RPM using full steps/rev and
@@ -69,7 +70,7 @@ the app reports its RPM and rotation relative to the geared output shaft.
 
 | Motor | Drive            | EN      | STP     | DIR     |
 | ----- | ---------------- | ------- | ------- | ------- |
-| 1     | Direct (1:1)     | GPIO 17 | GPIO 27 | GPIO 22 |
+| 1     | 5:1 planetary    | GPIO 17 | GPIO 27 | GPIO 22 |
 | 2     | 5:1 planetary    | GPIO 2  | GPIO 3  | GPIO 4  |
 | 3     | Direct (1:1)     | GPIO 10 | GPIO 9  | GPIO 11 |
 | 4     | Direct (1:1)     | GPIO 16 | GPIO 20 | GPIO 21 |
@@ -253,7 +254,7 @@ The encoder reports a 16-bit `value` (0–0xFFFF over one motor revolution) and 
 signed `carry` that increments/decrements each full turn, so the total count
 (`carry * 65536 + value`) tracks absolute motor position across many rotations.
 The `output_*` fields divide motor-shaft motion by `gear_ratio` to give the geared
-output-shaft position (identical to the motor shaft for the 1:1 motor).
+output-shaft position (identical to the motor shaft for the 1:1 motors).
 
 ## Teach &amp; playback
 
