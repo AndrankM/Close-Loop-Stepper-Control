@@ -353,9 +353,11 @@ def read_health():
 # NEMA 17 + MKS SERVO42C stepper control
 #   Motor 1:  EN -> GPIO 17   STP -> GPIO 27   DIR -> GPIO 22
 #   Motor 2:  EN -> GPIO 2    STP -> GPIO 3    DIR -> GPIO 4
-#   Motor 3:  EN -> GPIO 10   STP -> GPIO 9    DIR -> GPIO 11
+#   Motor 3:  EN -> GPIO 23   STP -> GPIO 24   DIR -> GPIO 25
 #   Motor 4:  EN -> GPIO 0    STP -> GPIO 5    DIR -> GPIO 6
 #   (EN is active-LOW on the SERVO42C)
+#   NOTE: Motor 3 was moved off GPIO 9/10/11 because those are the SPI0 pins
+#   (GPIO10 = MOSI) used to drive the WS2812 emotion rings on the Pi 5.
 # ---------------------------------------------------------------------------
 EN_PIN = 17
 STP_PIN = 27
@@ -365,9 +367,9 @@ EN2_PIN = 2
 STP2_PIN = 3
 DIR2_PIN = 4
 
-EN3_PIN = 10
-STP3_PIN = 9
-DIR3_PIN = 11
+EN3_PIN = 23
+STP3_PIN = 24
+DIR3_PIN = 25
 
 EN4_PIN = 16
 STP4_PIN = 20
