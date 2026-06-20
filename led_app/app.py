@@ -46,6 +46,14 @@ except Exception:  # ws281x library missing / not running on a Pi
     Color = None
     WS281X_AVAILABLE = False
 
+try:
+    import pigpio
+
+    PIGPIO_AVAILABLE = True
+except Exception:  # pigpio module missing
+    pigpio = None
+    PIGPIO_AVAILABLE = False
+
 app = Flask(__name__)
 
 # ---------------------------------------------------------------------------
@@ -1527,9 +1535,11 @@ class EmotionRings:
 
     def __init__(self, camera):
         self.camera = camera
-        self.available = WS281X_AVAILABLE
+        self.available = False
+        self.backend = None
         self.error = None
         self._strip = None
+        self._pi = None
         self._enabled = True
         self._running = False
         self._thread = None
@@ -1537,26 +1547,49 @@ class EmotionRings:
         self._last_emotion = "neutral"
         self._last_seen_ts = 0.0
         self._rng_state = 0xC0FFEE
-        if not self.available:
-            self.error = "rpi_ws281x module not available"
-            return
-        try:
-            # Shared output: both rings are connected to GPIO18.
-            self._strip = PixelStrip(
-                RING_LED_COUNT,
-                RING_PIN,
-                800000,
-                10,
-                False,
-                RING_BRIGHTNESS,
-                0,
-            )
-            self._strip.begin()
-            self._blackout()
-        except Exception as e:
-            self.available = False
-            self.error = "init failed: %r" % (e,)
-            self._strip = None
+        ws_err = None
+        if WS281X_AVAILABLE:
+            try:
+                # Shared output: both rings are connected to GPIO18.
+                self._strip = PixelStrip(
+                    RING_LED_COUNT,
+                    RING_PIN,
+                    800000,
+                    10,
+                    False,
+                    RING_BRIGHTNESS,
+                    0,
+                )
+                self._strip.begin()
+                self.available = True
+                self.backend = "ws281x"
+                self._blackout()
+                return
+            except Exception as e:
+                ws_err = e
+                self._strip = None
+
+        pig_err = None
+        if PIGPIO_AVAILABLE:
+            try:
+                self._pi = pigpio.pi()
+                if not self._pi.connected:
+                    raise RuntimeError("pigpiod not reachable")
+                self._pi.set_mode(RING_PIN, pigpio.OUTPUT)
+                self.available = True
+                self.backend = "pigpio"
+                self._blackout()
+                return
+            except Exception as e:
+                pig_err = e
+                if self._pi is not None:
+                    try:
+                        self._pi.stop()
+                    except Exception:
+                        pass
+                self._pi = None
+
+        self.error = "init failed: ws281x=%r pigpio=%r" % (ws_err, pig_err)
 
     @staticmethod
     def _clamp_u8(v):
@@ -1586,13 +1619,50 @@ class EmotionRings:
         self._rng_state = (1103515245 * self._rng_state + 12345) & 0x7FFFFFFF
         return self._rng_state & 0xFF
 
+    def _pigpio_show(self, colors):
+        """Send one WS2812 frame through pigpio waves (GRB, 800kHz)."""
+        if self._pi is None:
+            raise RuntimeError("pigpio backend unavailable")
+        pin_mask = 1 << RING_PIN
+        # Approximate WS2812 timings in microseconds.
+        t0h, t0l = 1, 1
+        t1h, t1l = 1, 1
+        pulses = []
+        for (r, g, b) in colors:
+            for byte in (g, r, b):
+                for bit in range(7, -1, -1):
+                    if byte & (1 << bit):
+                        pulses.append(pigpio.pulse(pin_mask, 0, t1h))
+                        pulses.append(pigpio.pulse(0, pin_mask, t1l))
+                    else:
+                        pulses.append(pigpio.pulse(pin_mask, 0, t0h))
+                        pulses.append(pigpio.pulse(0, pin_mask, t0l))
+        # Reset latch.
+        pulses.append(pigpio.pulse(0, pin_mask, 300))
+
+        self._pi.wave_clear()
+        self._pi.wave_add_generic(pulses)
+        wid = self._pi.wave_create()
+        if wid < 0:
+            raise RuntimeError("pigpio wave_create failed")
+        self._pi.wave_send_once(wid)
+        while self._pi.wave_tx_busy():
+            time.sleep(0.001)
+        self._pi.wave_delete(wid)
+
     def _apply(self, ring1_colors, ring2_colors):
-        if not self.available or not self._strip:
+        if not self.available:
             return
-        for i in range(RING_LED_COUNT):
-            c1 = ring1_colors[i]
-            self._strip.setPixelColor(i, Color(c1[0], c1[1], c1[2]))
-        self._strip.show()
+        if self.backend == "ws281x":
+            if not self._strip:
+                return
+            for i in range(RING_LED_COUNT):
+                c1 = ring1_colors[i]
+                self._strip.setPixelColor(i, Color(c1[0], c1[1], c1[2]))
+            self._strip.show()
+            return
+        if self.backend == "pigpio":
+            self._pigpio_show(ring1_colors)
 
     def _blackout(self):
         off = [(0, 0, 0)] * RING_LED_COUNT
@@ -1698,6 +1768,7 @@ class EmotionRings:
     def status(self):
         return {
             "available": self.available,
+            "backend": self.backend,
             "enabled": self._enabled,
             "running": self._running,
             "pins": [RING_PIN],
