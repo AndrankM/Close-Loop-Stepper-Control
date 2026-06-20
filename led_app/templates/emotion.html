@@ -264,6 +264,8 @@
           document.getElementById('modeBadge').textContent = 'live';
           document.getElementById('camImg').style.display = 'block';
           document.getElementById('cam').style.display = 'none';
+          document.getElementById('faceBox').style.display = 'none';
+          document.getElementById('camTag').textContent = 'U20CAM \u00B7 640\u00D7480';
           if (!document.getElementById('camImg').src)
             document.getElementById('camImg').src = '/camera/stream';
           EMOTIONS.forEach(e => targets[e.key] = d.scores[e.key] || 0);

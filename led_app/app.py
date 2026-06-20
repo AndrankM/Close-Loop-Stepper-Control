@@ -7,7 +7,7 @@ import time
 import shutil
 import subprocess
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, Response
 
 try:
     from gpiozero import DigitalOutputDevice, PWMOutputDevice, DigitalInputDevice
@@ -26,6 +26,16 @@ try:
 except Exception:  # pyserial not installed
     serial = None
     SERIAL_AVAILABLE = False
+
+try:
+    import cv2
+    import numpy as np
+
+    CV2_AVAILABLE = True
+except Exception:  # opencv not installed / headless dev box
+    cv2 = None
+    np = None
+    CV2_AVAILABLE = False
 
 app = Flask(__name__)
 
@@ -1057,6 +1067,280 @@ class RobotArm:
 arm = RobotArm(motors, encoders)
 
 
+# ---------------------------------------------------------------------------
+# Camera + on-device emotion detection
+# ---------------------------------------------------------------------------
+CAMERA_DEVICE = os.environ.get("MIRO_CAMERA_DEVICE", "/dev/video0")
+CAMERA_WIDTH = 640
+CAMERA_HEIGHT = 480
+_MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+FER_MODEL_PATH = os.path.join(_MODELS_DIR, "emotion-ferplus-8.onnx")
+YUNET_MODEL_PATH = os.path.join(_MODELS_DIR, "face_detection_yunet_2023mar.onnx")
+
+# FER+ raw output order (8 classes).
+_FERPLUS_LABELS = [
+    "neutral", "happiness", "surprise", "sadness",
+    "anger", "disgust", "fear", "contempt",
+]
+# The UI shows six emotions; fold the two extras onto the nearest shown class
+# (disgust -> angry, contempt -> neutral).
+_FERPLUS_TO_UI = {
+    "neutral": "neutral", "happiness": "happy", "surprise": "surprise",
+    "sadness": "sad", "anger": "angry", "disgust": "angry",
+    "fear": "fear", "contempt": "neutral",
+}
+UI_EMOTIONS = ["happy", "neutral", "surprise", "sad", "angry", "fear"]
+
+
+class EmotionCamera:
+    """USB camera capture + face detection + FER+ emotion inference.
+
+    A single background thread grabs frames from the USB camera, finds the
+    largest face (YuNet, with a Haar-cascade fallback), classifies its emotion
+    with the FER+ ONNX model via ``cv2.dnn``, draws an annotation and keeps the
+    latest JPEG (for the MJPEG stream) plus the latest structured result (for
+    ``/emotion/latest``). The camera opens lazily on first access and releases
+    itself after a period with no viewers so it is not held unnecessarily.
+    """
+
+    IDLE_TIMEOUT_S = 20.0
+
+    def __init__(self, device=CAMERA_DEVICE, width=CAMERA_WIDTH, height=CAMERA_HEIGHT):
+        self.device = device
+        self.width = width
+        self.height = height
+        self.available = CV2_AVAILABLE and os.path.exists(FER_MODEL_PATH)
+        self._lock = threading.Lock()
+        self._thread = None
+        self._running = False
+        self._cap = None
+        self._face_net = None
+        self._emo_net = None
+        self._haar = None
+        self._jpeg = None
+        self._result = self._empty_result()
+        self._last_active = 0.0
+        self._fps = 0.0
+
+    @staticmethod
+    def _empty_result():
+        return {
+            "live": False, "face": None, "box": None,
+            "scores": {k: 0.0 for k in UI_EMOTIONS},
+            "dominant": None, "infer_ms": 0.0, "fps": 0.0,
+        }
+
+    # -- model / capture setup ------------------------------------------
+    def _load_models(self):
+        if self._emo_net is None and os.path.exists(FER_MODEL_PATH):
+            self._emo_net = cv2.dnn.readNetFromONNX(FER_MODEL_PATH)
+        if (self._face_net is None and hasattr(cv2, "FaceDetectorYN")
+                and os.path.exists(YUNET_MODEL_PATH)):
+            try:
+                self._face_net = cv2.FaceDetectorYN.create(
+                    YUNET_MODEL_PATH, "", (self.width, self.height),
+                    score_threshold=0.7, nms_threshold=0.3, top_k=50,
+                )
+            except Exception:
+                self._face_net = None
+        if self._face_net is None and self._haar is None:
+            cascade = os.path.join(
+                cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
+            self._haar = cv2.CascadeClassifier(cascade)
+
+    def _open_capture(self):
+        cap = cv2.VideoCapture(self.device, cv2.CAP_V4L2)
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+        cap.set(cv2.CAP_PROP_FPS, 30)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        return cap
+
+    def ensure_started(self):
+        self._last_active = time.time()
+        if not self.available:
+            return False
+        with self._lock:
+            if self._running:
+                return True
+            self._running = True
+            self._thread = threading.Thread(target=self._run, daemon=True)
+            self._thread.start()
+        return True
+
+    # -- inference ------------------------------------------------------
+    def _detect_face(self, frame, gray):
+        if self._face_net is not None:
+            self._face_net.setInputSize((frame.shape[1], frame.shape[0]))
+            _, faces = self._face_net.detect(frame)
+            if faces is None or len(faces) == 0:
+                return None
+            best = max(faces, key=lambda f: f[2] * f[3])
+            x, y, w, h = int(best[0]), int(best[1]), int(best[2]), int(best[3])
+        else:
+            rects = self._haar.detectMultiScale(gray, 1.2, 5, minSize=(60, 60))
+            if len(rects) == 0:
+                return None
+            x, y, w, h = max(rects, key=lambda r: r[2] * r[3])
+            x, y, w, h = int(x), int(y), int(w), int(h)
+        x = max(0, x)
+        y = max(0, y)
+        w = min(w, frame.shape[1] - x)
+        h = min(h, frame.shape[0] - y)
+        if w <= 0 or h <= 0:
+            return None
+        return (x, y, w, h)
+
+    def _classify(self, gray, box):
+        x, y, w, h = box
+        roi = gray[y:y + h, x:x + w]
+        if roi.size == 0:
+            return None
+        face = cv2.resize(roi, (64, 64)).astype(np.float32)
+        blob = face.reshape(1, 1, 64, 64)
+        self._emo_net.setInput(blob)
+        out = self._emo_net.forward().flatten()
+        ex = np.exp(out - np.max(out))
+        probs = ex / ex.sum()
+        ui = {k: 0.0 for k in UI_EMOTIONS}
+        for label, p in zip(_FERPLUS_LABELS, probs):
+            ui[_FERPLUS_TO_UI[label]] += float(p)
+        total = sum(ui.values()) or 1.0
+        return {k: v / total for k, v in ui.items()}
+
+    # -- worker ---------------------------------------------------------
+    def _run(self):
+        try:
+            self._load_models()
+        except Exception:
+            pass
+        self._cap = self._open_capture()
+        frame_interval = 1.0 / 15.0
+        t_fps = time.time()
+        n = 0
+        fail = 0
+        while self._running:
+            if time.time() - self._last_active > self.IDLE_TIMEOUT_S:
+                break
+            ok, frame = (self._cap.read() if self._cap else (False, None))
+            if not ok or frame is None:
+                fail += 1
+                if fail > 30:
+                    try:
+                        self._cap.release()
+                    except Exception:
+                        pass
+                    time.sleep(0.5)
+                    self._cap = self._open_capture()
+                    fail = 0
+                time.sleep(0.05)
+                continue
+            fail = 0
+            t0 = time.time()
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            box = None
+            scores = None
+            try:
+                box = self._detect_face(frame, gray)
+                if box is not None and self._emo_net is not None:
+                    scores = self._classify(gray, box)
+            except Exception:
+                box = None
+                scores = None
+            infer_ms = (time.time() - t0) * 1000.0
+
+            if box is not None:
+                x, y, w, h = box
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (105, 211, 0), 2)
+                if scores:
+                    dom = max(scores, key=scores.get)
+                    label = "%s %d%%" % (dom, round(scores[dom] * 100))
+                    cv2.rectangle(frame, (x, max(0, y - 22)),
+                                  (x + max(120, w), y), (23, 31, 12), -1)
+                    cv2.putText(frame, label, (x + 6, max(14, y - 6)),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (194, 230, 105), 2)
+
+            n += 1
+            if time.time() - t_fps >= 1.0:
+                self._fps = n / (time.time() - t_fps)
+                n = 0
+                t_fps = time.time()
+
+            ok2, buf = cv2.imencode(
+                ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+            with self._lock:
+                if ok2:
+                    self._jpeg = buf.tobytes()
+                if scores is not None:
+                    dom = max(scores, key=scores.get)
+                    self._result = {
+                        "live": True, "face": 1,
+                        "box": [box[0], box[1], box[2], box[3]],
+                        "scores": scores, "dominant": dom,
+                        "infer_ms": round(infer_ms, 1),
+                        "fps": round(self._fps, 1),
+                    }
+                else:
+                    self._result = {
+                        "live": True, "face": None, "box": None,
+                        "scores": {k: 0.0 for k in UI_EMOTIONS},
+                        "dominant": None, "infer_ms": round(infer_ms, 1),
+                        "fps": round(self._fps, 1),
+                    }
+            dt = time.time() - t0
+            if dt < frame_interval:
+                time.sleep(frame_interval - dt)
+
+        with self._lock:
+            self._running = False
+            self._jpeg = None
+            self._result = self._empty_result()
+        try:
+            if self._cap:
+                self._cap.release()
+        except Exception:
+            pass
+        self._cap = None
+
+    # -- accessors ------------------------------------------------------
+    def latest_result(self):
+        self.ensure_started()
+        with self._lock:
+            return dict(self._result)
+
+    def snapshot(self):
+        if not self.ensure_started():
+            return None
+        for _ in range(40):
+            with self._lock:
+                if self._jpeg is not None:
+                    return self._jpeg
+            time.sleep(0.05)
+        return None
+
+    def frames(self):
+        if not self.ensure_started():
+            return
+        boundary = b"--frame"
+        while True:
+            self._last_active = time.time()
+            with self._lock:
+                jpg = self._jpeg
+                running = self._running
+            if not running:
+                break
+            if jpg is None:
+                time.sleep(0.05)
+                continue
+            yield (boundary + b"\r\nContent-Type: image/jpeg\r\nContent-Length: "
+                   + str(len(jpg)).encode() + b"\r\n\r\n" + jpg + b"\r\n")
+            time.sleep(1.0 / 20.0)
+
+
+camera = EmotionCamera()
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -1069,31 +1353,46 @@ def emotion_page():
 
 @app.route("/emotion/latest")
 def emotion_latest():
-    """Latest face / emotion result.
+    """Latest face / emotion result from the live camera pipeline.
 
-    Placeholder until the camera + inference pipeline is added. Returns
-    ``live: false`` so the UI falls back to its built-in simulation. When the
-    camera is wired up, populate this with real values, e.g.::
+    Returns ``live: true`` with real scores once the camera + inference thread
+    are running, otherwise ``live: false`` so the UI falls back to its built-in
+    simulation. Shape::
 
         {
-          "live": True,
+          "live": true,
           "face": 1,
           "box": [x, y, w, h],            # in the 640x480 frame
-          "scores": {"happy": 0.0, "neutral": 0.0, "surprise": 0.0,
-                     "sad": 0.0, "angry": 0.0, "fear": 0.0},
-          "dominant": "neutral",
+          "scores": {"happy": .., "neutral": .., "surprise": ..,
+                     "sad": .., "angry": .., "fear": ..},
+          "dominant": "happy",
+          "infer_ms": 12.3,
+          "fps": 14.8
         }
     """
-    return jsonify({
-        "live": False,
-        "face": None,
-        "box": None,
-        "scores": {
-            "happy": 0.0, "neutral": 0.0, "surprise": 0.0,
-            "sad": 0.0, "angry": 0.0, "fear": 0.0,
-        },
-        "dominant": None,
-    })
+    return jsonify(camera.latest_result())
+
+
+@app.route("/camera/stream")
+def camera_stream():
+    """MJPEG stream of the annotated camera feed."""
+    if not camera.available:
+        return jsonify({"error": "camera unavailable"}), 503
+    return Response(
+        camera.frames(),
+        mimetype="multipart/x-mixed-replace; boundary=frame",
+    )
+
+
+@app.route("/camera/snapshot")
+def camera_snapshot():
+    """Single annotated JPEG frame from the camera."""
+    if not camera.available:
+        return jsonify({"error": "camera unavailable"}), 503
+    jpg = camera.snapshot()
+    if jpg is None:
+        return jsonify({"error": "no frame"}), 503
+    return Response(jpg, mimetype="image/jpeg")
 
 
 @app.route("/led/on", methods=["POST"])

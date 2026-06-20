@@ -512,7 +512,74 @@
       font-size: 0.78rem;
       color: #444;
     }
-  </style>
+  /* ---- camera / emotion card ---- */
+  .cam-chip {
+    cursor: pointer; user-select: none;
+    color: #9fe6c2; font-size: 0.8rem;
+    border: 1px solid #244035; border-radius: 8px;
+    padding: 0.3rem 0.7rem; display: inline-block;
+    background: #11201a;
+  }
+  .cam-chip:hover { background: #16291f; }
+  .cam-card {
+    background: #161a26; border: 1px solid #232838; border-radius: 14px;
+    padding: 1rem; max-width: 1080px; margin: 0 auto 1.1rem;
+  }
+  .cam-card.hidden { display: none; }
+  .cam-card .cc-title {
+    display: flex; align-items: center; gap: 0.5rem;
+    font-size: 0.95rem; font-weight: 600; color: #cdd3e1; margin-bottom: 0.8rem;
+  }
+  .cc-dot {
+    width: 9px; height: 9px; border-radius: 50%; background: #ff4d4f;
+    box-shadow: 0 0 0 0 rgba(255,77,79,0.7); animation: ccpulse 1.4s infinite;
+  }
+  @keyframes ccpulse {
+    0% { box-shadow: 0 0 0 0 rgba(255,77,79,0.7); }
+    70% { box-shadow: 0 0 0 8px rgba(255,77,79,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,77,79,0); }
+  }
+  .cc-stage { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .cc-view {
+    position: relative; flex: 1 1 420px; aspect-ratio: 4 / 3;
+    background: #05070c; border-radius: 10px; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cc-view img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cc-placeholder { color: #46506a; font-size: 0.8rem; text-align: center; padding: 1rem; }
+  .cc-tag {
+    position: absolute; top: 10px; left: 10px;
+    background: rgba(0,0,0,0.55); color: #9fe6c2; font-size: 0.7rem;
+    padding: 0.2rem 0.55rem; border-radius: 6px; font-variant-numeric: tabular-nums;
+  }
+  .cc-fps {
+    position: absolute; top: 10px; right: 10px;
+    background: rgba(0,0,0,0.55); color: #cdd3e1; font-size: 0.7rem;
+    padding: 0.2rem 0.55rem; border-radius: 6px; font-variant-numeric: tabular-nums;
+  }
+  .cc-side { flex: 1 1 240px; min-width: 240px; }
+  .cc-verdict {
+    display: flex; align-items: center; gap: 0.8rem;
+    background: #11151f; border: 1px solid #232838; border-radius: 10px;
+    padding: 0.7rem 0.9rem; margin-bottom: 0.9rem;
+  }
+  .cc-verdict .emoji { font-size: 2rem; line-height: 1; }
+  .cc-verdict .label { font-size: 1.15rem; font-weight: 700; color: #e0e0e0; }
+  .cc-verdict .conf { color: #7b8290; font-size: 0.78rem; margin-top: 0.1rem; }
+  .cc-emo { margin-bottom: 0.55rem; }
+  .cc-emo .row { display: flex; justify-content: space-between; font-size: 0.78rem; margin-bottom: 0.22rem; }
+  .cc-emo .row .name { color: #cdd3e1; }
+  .cc-emo .row .val { color: #8a92a6; font-variant-numeric: tabular-nums; }
+  .cc-bar { height: 8px; background: #1c2130; border-radius: 999px; overflow: hidden; }
+  .cc-bar > span { display: block; height: 100%; width: 0%; border-radius: 999px; transition: width 0.35s ease; }
+  .b-happy   > span { background: linear-gradient(90deg,#34d399,#10b981); }
+  .b-neutral > span { background: linear-gradient(90deg,#94a3b8,#64748b); }
+  .b-surprise> span { background: linear-gradient(90deg,#fbbf24,#f59e0b); }
+  .b-sad     > span { background: linear-gradient(90deg,#60a5fa,#3b82f6); }
+  .b-angry   > span { background: linear-gradient(90deg,#f87171,#ef4444); }
+  .b-fear    > span { background: linear-gradient(90deg,#a78bfa,#8b5cf6); }
+  .cc-hint { color: #5a6178; font-size: 0.72rem; margin-top: 0.6rem; }
+</style>
 </head>
 <body>
   <div class="page-header">
@@ -521,6 +588,7 @@
     <button class="btn-estop-all" id="estop-all" onclick="estopAll()">&#9888; STOP ALL MOTORS</button>
     <div style="margin-top:0.6rem; display:flex; gap:0.5rem; justify-content:center; align-items:center; flex-wrap:wrap;">
       <a href="/emotion" style="color:#7dd3fc;font-size:0.8rem;text-decoration:none;border:1px solid #2a3650;border-radius:8px;padding:0.3rem 0.7rem;display:inline-block;">&#128247; Emotion detection</a>
+      <span class="cam-chip" id="cam-chip" onclick="toggleCamera()" title="Show the head camera with live emotion detection">&#128247; Camera</span>
       <span class="cpu-temp" id="cpu-temp" onclick="toggleHealth()" title="Click for Pi 5 health details">&#127777; Pi <span id="cpu-temp-val">--</span>&deg;C</span>
     </div>
   </div>
@@ -587,6 +655,31 @@
   </div>
 
   <button class="btn-estop-all estop-float" onclick="estopAll()" title="Emergency stop all motors">&#9888; STOP ALL</button>
+
+  <div class="cam-card hidden" id="camera-card">
+    <div class="cc-title"><span class="cc-dot"></span> Head camera &middot; emotion detection
+      <a href="/emotion" style="margin-left:auto;color:#7dd3fc;font-size:0.75rem;text-decoration:none;">full view &rarr;</a>
+    </div>
+    <div class="cc-stage">
+      <div class="cc-view" id="cc-view">
+        <div class="cc-placeholder" id="cc-placeholder">Starting camera&hellip;</div>
+        <img id="cc-img" alt="camera stream" style="display:none;" />
+        <div class="cc-tag" id="cc-tag">U20CAM &middot; 640&times;480</div>
+        <div class="cc-fps" id="cc-fps">&mdash; fps</div>
+      </div>
+      <div class="cc-side">
+        <div class="cc-verdict">
+          <div class="emoji" id="cc-emoji">&#129488;</div>
+          <div>
+            <div class="label" id="cc-label">&mdash;</div>
+            <div class="conf" id="cc-conf">no face yet</div>
+          </div>
+        </div>
+        <div id="cc-bars"></div>
+        <div class="cc-hint" id="cc-hint">On-device YuNet face detection + FER+ emotion model.</div>
+      </div>
+    </div>
+  </div>
 
   <div class="units" id="units"></div>
 
@@ -1145,6 +1238,87 @@ ${m.limits ? `
       } else if (healthTimer) {
         clearInterval(healthTimer); healthTimer = null;
       }
+    }
+
+    // ---- head camera + emotion detection ----
+    const CC_EMOTIONS = [
+      { key: 'happy',    name: 'Happy',    emoji: '\uD83D\uDE00', cls: 'b-happy' },
+      { key: 'neutral',  name: 'Neutral',  emoji: '\uD83D\uDE10', cls: 'b-neutral' },
+      { key: 'surprise', name: 'Surprise', emoji: '\uD83D\uDE2E', cls: 'b-surprise' },
+      { key: 'sad',      name: 'Sad',      emoji: '\uD83D\uDE22', cls: 'b-sad' },
+      { key: 'angry',    name: 'Angry',    emoji: '\uD83D\uDE20', cls: 'b-angry' },
+      { key: 'fear',     name: 'Fear',     emoji: '\uD83D\uDE28', cls: 'b-fear' },
+    ];
+    const ccByKey = Object.fromEntries(CC_EMOTIONS.map(e => [e.key, e]));
+    let camVisible = false, camTimer = null;
+    (function buildCamBars() {
+      const host = document.getElementById('cc-bars');
+      CC_EMOTIONS.forEach(e => {
+        const row = document.createElement('div');
+        row.className = 'cc-emo';
+        row.innerHTML =
+          '<div class="row"><span class="name">' + e.emoji + ' ' + e.name + '</span>' +
+          '<span class="val" id="cc-val-' + e.key + '">0%</span></div>' +
+          '<div class="cc-bar ' + e.cls + '"><span id="cc-bar-' + e.key + '"></span></div>';
+        host.appendChild(row);
+      });
+    })();
+
+    function toggleCamera() {
+      camVisible = !camVisible;
+      const card = document.getElementById('camera-card');
+      const chip = document.getElementById('cam-chip');
+      card.classList.toggle('hidden', !camVisible);
+      chip.style.background = camVisible ? '#16291f' : '';
+      const img = document.getElementById('cc-img');
+      if (camVisible) {
+        // lazy-load the stream so the camera only starts when shown
+        img.onload = function () {
+          document.getElementById('cc-placeholder').style.display = 'none';
+          img.style.display = 'block';
+        };
+        img.onerror = function () {
+          document.getElementById('cc-placeholder').textContent = 'Camera unavailable';
+        };
+        img.src = '/camera/stream?t=' + Date.now();
+        pollEmotion();
+        if (!camTimer) camTimer = setInterval(pollEmotion, 600);
+      } else {
+        if (camTimer) { clearInterval(camTimer); camTimer = null; }
+        img.src = '';                       // release the MJPEG connection -> camera idles
+        img.style.display = 'none';
+        document.getElementById('cc-placeholder').style.display = '';
+        document.getElementById('cc-placeholder').textContent = 'Starting camera\u2026';
+      }
+    }
+
+    async function pollEmotion() {
+      try {
+        const r = await fetch('/emotion/latest', { cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json();
+        document.getElementById('cc-fps').textContent =
+          (d.fps ? Math.round(d.fps) : '\u2014') + ' fps';
+        const scores = d.scores || {};
+        CC_EMOTIONS.forEach(e => {
+          const pct = Math.round((scores[e.key] || 0) * 100);
+          const bar = document.getElementById('cc-bar-' + e.key);
+          const val = document.getElementById('cc-val-' + e.key);
+          if (bar) bar.style.width = pct + '%';
+          if (val) val.textContent = pct + '%';
+        });
+        if (d.dominant && d.face) {
+          const e = ccByKey[d.dominant] || ccByKey.neutral;
+          const pct = Math.round((scores[d.dominant] || 0) * 100);
+          document.getElementById('cc-emoji').textContent = e.emoji;
+          document.getElementById('cc-label').textContent = e.name;
+          document.getElementById('cc-conf').textContent = 'confidence ' + pct + '%';
+        } else {
+          document.getElementById('cc-emoji').textContent = '\uD83E\uDDD0';
+          document.getElementById('cc-label').textContent = d.live ? 'No face' : '\u2014';
+          document.getElementById('cc-conf').textContent = d.live ? 'searching\u2026' : 'camera off';
+        }
+      } catch (e) { /* offline */ }
     }
 
     function fmtUptime(s) {

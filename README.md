@@ -39,9 +39,13 @@ shaft.
   memory, disk, swap, uptime, network (IP + live throughput), active-cooler fan
   RPM, board power draw (V / A / W from the PMIC), and undervoltage/throttling
   flags (see [Pi 5 health](#raspberry-pi-5-health)).
-- **Emotion detection page** — a separate `/emotion` view that overlays a detected
-  face box, landmarks, dominant-emotion verdict, and per-emotion bars on the camera
-  feed.
+- **Head camera + on-device emotion detection** — a USB camera (Innomaker
+  U20CAM-1080P) mounted on the arm head streams a live annotated MJPEG feed. The
+  Pi runs face detection (OpenCV **YuNet**) and emotion classification (**FER+**
+  ONNX via `cv2.dnn`) fully on-device at ~15 fps. A collapsible **Camera** card on
+  the main page shows the live feed, dominant-emotion verdict and per-emotion
+  bars; the dedicated `/emotion` view shows the same at full size (and falls back
+  to a browser simulation when the camera/model is unavailable).
 - **Global emergency stop** — a prominent header button plus a sticky floating
   button immediately hard-stop **all** motors and any running playback at once.
 - **Hardware-timed step pulses** — step signals are generated with hardware PWM
@@ -214,6 +218,9 @@ Routes are parameterized by motor id (`<mid>` = `1`–`4`).
 | GET    | `/motor/<mid>/encoder`    | Encoder reading JSON                        |
 | POST   | `/estop`                  | Emergency stop: hard-stop all motors + playback |
 | GET    | `/emotion`                | Emotion detection page                      |
+| GET    | `/emotion/latest`         | Latest face/emotion result JSON (`live`, `box`, `scores`, `dominant`, `fps`) |
+| GET    | `/camera/stream`          | Annotated live MJPEG stream (`multipart/x-mixed-replace`) |
+| GET    | `/camera/snapshot`        | Single annotated JPEG frame                 |
 | GET    | `/system/temp`            | Pi 5 SoC temperature JSON                   |
 | GET    | `/system/health`          | Pi 5 health JSON (CPU, memory, disk, swap, network, fan, power, throttling) |
 
@@ -301,14 +308,50 @@ collapsible **health card** that polls `/system/health` every few seconds and sh
 These readings use only the Python standard library plus `vcgencmd`, and each metric
 degrades gracefully (`n/a`) on hardware that does not expose it.
 
+## Head camera &amp; emotion detection
+
+A USB camera (**Innomaker U20CAM-1080P**, a standard UVC/V4L2 device on
+`/dev/video0`) mounted on the arm head feeds an on-device vision pipeline:
+
+- **Capture** — OpenCV `VideoCapture` (V4L2, MJPG) at 640×480.
+- **Face detection** — OpenCV **YuNet** (`face_detection_yunet_2023mar.onnx`), with
+  the bundled Haar cascade as an automatic fallback.
+- **Emotion** — Microsoft **FER+** (`emotion-ferplus-8.onnx`) run through
+  `cv2.dnn` (no extra runtime needed). The 8 FER+ classes are mapped onto the six
+  shown emotions (happy, neutral, surprise, sad, angry, fear).
+
+A single background thread grabs frames, detects the largest face, classifies its
+emotion, draws the box + label, and publishes the latest annotated JPEG plus a
+structured result. The camera opens lazily on first request and releases itself
+after ~20 s with no viewers. Runs at roughly 15 fps with ~35 ms inference per
+frame on the Pi 5.
+
+Open the **Camera** card on the main page (or the full `/emotion` view) to watch
+the live `/camera/stream` with the dominant emotion and per-emotion bars driven by
+`/emotion/latest`.
+
+### Setup (one-time, on the Pi)
+
+OpenCV and the model files are not part of the repo. Install and download them with:
+
+```bash
+# from the project root, with the Pi reachable over SSH
+scripts/setup_vision.sh        # run on the Pi (installs python3-opencv + models)
+```
+
+This installs the `python3-opencv` apt package and downloads the YuNet and FER+
+ONNX models into `led_app/models/` (git-ignored). Set `MIRO_CAMERA_DEVICE` to
+override the default `/dev/video0`.
+
 ## Project structure
 
 ```
 led_app/
-  app.py               Flask backend: motor control + encoder readers + arm + Pi health
+  app.py               Flask backend: motor control + encoder readers + arm + Pi health + camera
   templates/
-    index.html         Dashboard UI (per-motor controls + live encoder + teach/playback + Pi health)
-    emotion.html       Emotion detection page (face box, landmarks, emotion bars)
+    index.html         Dashboard UI (per-motor controls + live encoder + teach/playback + Pi health + camera)
+    emotion.html       Emotion detection page (live feed, emotion bars)
+  models/              YuNet + FER+ ONNX models (downloaded by scripts/setup_vision.sh, git-ignored)
   programs/            Saved teach/playback programs (JSON, created at runtime)
   speedtest.py         Measures actual motor speed via the encoder
   redeploy.ps1         Deploy script (scp + restart service over SSH)
