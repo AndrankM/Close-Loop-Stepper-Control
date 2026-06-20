@@ -758,6 +758,45 @@ motors = {
 # Standard RC servos for axis 5 & 6 using calibrated 270deg settings.
 servos = {}
 servo_angles = {}
+servo_enabled = {}
+servo_hold = {}
+servo_detach_timers = {}
+servo_lock = threading.Lock()
+
+
+def _cancel_servo_detach(sid):
+    t = servo_detach_timers.get(sid)
+    if t is not None:
+        try:
+            t.cancel()
+        except Exception:
+            pass
+    servo_detach_timers[sid] = None
+
+
+def _schedule_servo_detach(sid, delay_s=0.25):
+    """Detach after motion when hold mode is off to avoid idle jitter."""
+    _cancel_servo_detach(sid)
+
+    def _do_detach():
+        with servo_lock:
+            if not servo_enabled.get(sid, False):
+                return
+            if servo_hold.get(sid, True):
+                return
+            servo = servos.get(sid)
+            if servo is not None:
+                try:
+                    servo.detach()
+                except Exception:
+                    pass
+
+    t = threading.Timer(delay_s, _do_detach)
+    t.daemon = True
+    servo_detach_timers[sid] = t
+    t.start()
+
+
 if GPIO_AVAILABLE and AngularServo is not None:
     try:
         servos[5] = AngularServo(
@@ -780,6 +819,12 @@ if GPIO_AVAILABLE and AngularServo is not None:
         )
         servo_angles[5] = 0.0
         servo_angles[6] = 0.0
+        servo_enabled[5] = True
+        servo_enabled[6] = True
+        servo_hold[5] = True
+        servo_hold[6] = True
+        servo_detach_timers[5] = None
+        servo_detach_timers[6] = None
     except Exception:
         pass  # Servo pins unavailable.
 
@@ -2257,16 +2302,98 @@ def servo_angle(sid):
         data = request.get_json(silent=True) or {}
         angle = float(data.get("angle", 0))
         angle = max(SERVO_MIN_ANGLE, min(SERVO_MAX_ANGLE, angle))
-        prev = servo_angles.get(sid)
-        # Ignore tiny request jitter from UI/network noise.
-        if prev is None or abs(prev - angle) >= 0.5:
-            servo.angle = angle
-            servo_angles[sid] = angle
-        return jsonify({"servo": sid, "angle": angle})
+        with servo_lock:
+            if not servo_enabled.get(sid, True):
+                return jsonify({
+                    "error": f"servo {sid} is OFF",
+                    "servo": sid,
+                    "enabled": False,
+                }), 409
+            prev = servo_angles.get(sid)
+            # Ignore tiny request jitter from UI/network noise.
+            if prev is None or abs(prev - angle) >= 0.5:
+                servo.angle = angle
+                servo_angles[sid] = angle
+            if servo_hold.get(sid, True):
+                _cancel_servo_detach(sid)
+            else:
+                _schedule_servo_detach(sid)
+            return jsonify({
+                "servo": sid,
+                "angle": angle,
+                "enabled": servo_enabled.get(sid, True),
+                "hold": servo_hold.get(sid, True),
+            })
     angle = servo_angles.get(sid)
     if angle is None and getattr(servo, "angle", None) is not None:
         angle = float(servo.angle)
-    return jsonify({"servo": sid, "angle": angle if angle is not None else 0.0})
+    return jsonify({
+        "servo": sid,
+        "angle": angle if angle is not None else 0.0,
+        "enabled": servo_enabled.get(sid, True),
+        "hold": servo_hold.get(sid, True),
+    })
+
+
+@app.route("/servo/<int:sid>/power", methods=["POST"])
+def servo_power(sid):
+    """Turn servo PWM output ON/OFF (OFF detaches signal)."""
+    if sid not in servos:
+        return jsonify({"error": f"servo {sid} not available"}), 404
+    data = request.get_json(silent=True) or {}
+    on = bool(data.get("on", True))
+    servo = servos[sid]
+    with servo_lock:
+        servo_enabled[sid] = on
+        if on:
+            angle = servo_angles.get(sid, 0.0)
+            servo.angle = angle
+            if servo_hold.get(sid, True):
+                _cancel_servo_detach(sid)
+            else:
+                _schedule_servo_detach(sid)
+        else:
+            _cancel_servo_detach(sid)
+            try:
+                servo.detach()
+            except Exception:
+                pass
+    return jsonify({
+        "servo": sid,
+        "enabled": servo_enabled.get(sid, True),
+        "hold": servo_hold.get(sid, True),
+        "angle": servo_angles.get(sid, 0.0),
+    })
+
+
+@app.route("/servo/<int:sid>/hold", methods=["POST"])
+def servo_hold_mode(sid):
+    """Set hold mode. ON keeps torque at target; OFF detaches after moves."""
+    if sid not in servos:
+        return jsonify({"error": f"servo {sid} not available"}), 404
+    data = request.get_json(silent=True) or {}
+    on = bool(data.get("on", True))
+    servo = servos[sid]
+    with servo_lock:
+        servo_hold[sid] = on
+        if not servo_enabled.get(sid, True):
+            return jsonify({
+                "servo": sid,
+                "enabled": False,
+                "hold": servo_hold.get(sid, True),
+                "angle": servo_angles.get(sid, 0.0),
+            })
+        if on:
+            _cancel_servo_detach(sid)
+            servo.angle = servo_angles.get(sid, 0.0)
+        else:
+            _schedule_servo_detach(sid)
+    return jsonify({
+        "servo": sid,
+        "enabled": servo_enabled.get(sid, True),
+        "hold": servo_hold.get(sid, True),
+        "angle": servo_angles.get(sid, 0.0),
+    })
 
 
 @app.route("/servo/status")
@@ -2281,6 +2408,9 @@ def servo_status():
             "available": True,
             "angle": angle if angle is not None else 0.0,
             "pin": [SERVO5_PIN if sid == 5 else SERVO6_PIN],
+            "enabled": servo_enabled.get(sid, True),
+            "hold": servo_hold.get(sid, True),
+            "range": [SERVO_MIN_ANGLE, SERVO_MAX_ANGLE],
         }
     return jsonify(status)
 

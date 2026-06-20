@@ -314,6 +314,26 @@
       font-weight: bold;
       font-size: 0.9rem;
     }
+    .servo-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    .servo-btn {
+      border: 1px solid #2a3650;
+      background: #1a2335;
+      color: #b8c2dd;
+      padding: 0.42rem 0.65rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .servo-btn.on {
+      background: #1f4f2f;
+      border-color: #2d8f50;
+      color: #d7ffe6;
+    }
 
     /* --- Encoder card --- */
     .encoder-grid {
@@ -815,6 +835,7 @@
     const SERVO_MIN = -135;
     const SERVO_MAX = 135;
     const servoSendState = {};
+    const servoUiState = {};
 
     function servoHTML(s) {
       const i = s.id;
@@ -827,8 +848,30 @@
                  oninput="setServoAngle(${i}, this.value)">
           <span class="servo-angle" id="servo-${i}-val">0°</span>
         </div>
+        <div class="servo-actions">
+          <button id="servo-${i}-power" class="servo-btn on" onclick="toggleServoPower(${i})">Power: ON</button>
+          <button id="servo-${i}-hold" class="servo-btn on" onclick="toggleServoHold(${i})">Hold: ON</button>
+        </div>
       </div>
       `;
+    }
+
+    function applyServoUiState(sid, st) {
+      const powerBtn = document.getElementById(`servo-${sid}-power`);
+      const holdBtn = document.getElementById(`servo-${sid}-hold`);
+      const slider = document.getElementById(`servo-${sid}`);
+      const enabled = !!st.enabled;
+      const hold = !!st.hold;
+      if (powerBtn) {
+        powerBtn.classList.toggle('on', enabled);
+        powerBtn.textContent = `Power: ${enabled ? 'ON' : 'OFF'}`;
+      }
+      if (holdBtn) {
+        holdBtn.classList.toggle('on', hold);
+        holdBtn.textContent = `Hold: ${hold ? 'ON' : 'OFF'}`;
+      }
+      if (slider) slider.disabled = !enabled;
+      servoUiState[sid] = { enabled, hold };
     }
 
     function queueServoSend(sid) {
@@ -850,9 +893,40 @@
     function setServoAngle(sid, angle) {
       angle = Math.max(SERVO_MIN, Math.min(SERVO_MAX, parseFloat(angle)));
       document.getElementById(`servo-${sid}-val`).textContent = angle.toFixed(0) + '°';
+      if (servoUiState[sid] && !servoUiState[sid].enabled) return;
       if (!servoSendState[sid]) servoSendState[sid] = { inflight: false, pending: angle };
       servoSendState[sid].pending = angle;
       queueServoSend(sid);
+    }
+
+    async function toggleServoPower(sid) {
+      const st = servoUiState[sid] || { enabled: true, hold: true };
+      const on = !st.enabled;
+      try {
+        const r = await fetch(`/servo/${sid}/power`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ on }),
+        });
+        if (!r.ok) return;
+        const d = await r.json();
+        applyServoUiState(sid, d);
+      } catch (e) { /* offline */ }
+    }
+
+    async function toggleServoHold(sid) {
+      const st = servoUiState[sid] || { enabled: true, hold: true };
+      const on = !st.hold;
+      try {
+        const r = await fetch(`/servo/${sid}/hold`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ on }),
+        });
+        if (!r.ok) return;
+        const d = await r.json();
+        applyServoUiState(sid, d);
+      } catch (e) { /* offline */ }
     }
 
     async function initServos() {
@@ -868,6 +942,10 @@
               input.value = d.angle;
               val.textContent = d.angle.toFixed(0) + '°';
             }
+            applyServoUiState(s.id, {
+              enabled: d.enabled !== false,
+              hold: d.hold !== false,
+            });
           }).catch(() => {});
         } catch (e) { /* offline */ }
       });
