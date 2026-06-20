@@ -760,6 +760,7 @@ servos = {}
 servo_angles = {}
 servo_enabled = {}
 servo_hold = {}
+servo_detach_delay = {}
 servo_detach_timers = {}
 servo_lock = threading.Lock()
 
@@ -774,8 +775,10 @@ def _cancel_servo_detach(sid):
     servo_detach_timers[sid] = None
 
 
-def _schedule_servo_detach(sid, delay_s=0.25):
+def _schedule_servo_detach(sid, delay_s=None):
     """Detach after motion when hold mode is off to avoid idle jitter."""
+    if delay_s is None:
+        delay_s = float(servo_detach_delay.get(sid, 0.25))
     _cancel_servo_detach(sid)
 
     def _do_detach():
@@ -823,6 +826,8 @@ if GPIO_AVAILABLE and AngularServo is not None:
         servo_enabled[6] = True
         servo_hold[5] = True
         servo_hold[6] = True
+        servo_detach_delay[5] = 0.25
+        servo_detach_delay[6] = 0.25
         servo_detach_timers[5] = None
         servo_detach_timers[6] = None
     except Exception:
@@ -2323,6 +2328,7 @@ def servo_angle(sid):
                 "angle": angle,
                 "enabled": servo_enabled.get(sid, True),
                 "hold": servo_hold.get(sid, True),
+                "detach_delay": servo_detach_delay.get(sid, 0.25),
             })
     angle = servo_angles.get(sid)
     if angle is None and getattr(servo, "angle", None) is not None:
@@ -2332,6 +2338,7 @@ def servo_angle(sid):
         "angle": angle if angle is not None else 0.0,
         "enabled": servo_enabled.get(sid, True),
         "hold": servo_hold.get(sid, True),
+        "detach_delay": servo_detach_delay.get(sid, 0.25),
     })
 
 
@@ -2363,6 +2370,7 @@ def servo_power(sid):
         "enabled": servo_enabled.get(sid, True),
         "hold": servo_hold.get(sid, True),
         "angle": servo_angles.get(sid, 0.0),
+        "detach_delay": servo_detach_delay.get(sid, 0.25),
     })
 
 
@@ -2382,6 +2390,7 @@ def servo_hold_mode(sid):
                 "enabled": False,
                 "hold": servo_hold.get(sid, True),
                 "angle": servo_angles.get(sid, 0.0),
+                "detach_delay": servo_detach_delay.get(sid, 0.25),
             })
         if on:
             _cancel_servo_detach(sid)
@@ -2393,6 +2402,28 @@ def servo_hold_mode(sid):
         "enabled": servo_enabled.get(sid, True),
         "hold": servo_hold.get(sid, True),
         "angle": servo_angles.get(sid, 0.0),
+        "detach_delay": servo_detach_delay.get(sid, 0.25),
+    })
+
+
+@app.route("/servo/<int:sid>/detach_delay", methods=["POST"])
+def servo_detach_delay_set(sid):
+    """Set idle detach delay (seconds) used when hold mode is OFF."""
+    if sid not in servos:
+        return jsonify({"error": f"servo {sid} not available"}), 404
+    data = request.get_json(silent=True) or {}
+    delay = float(data.get("seconds", 0.25))
+    delay = max(0.05, min(2.0, delay))
+    with servo_lock:
+        servo_detach_delay[sid] = delay
+        if servo_enabled.get(sid, True) and not servo_hold.get(sid, True):
+            _schedule_servo_detach(sid)
+    return jsonify({
+        "servo": sid,
+        "enabled": servo_enabled.get(sid, True),
+        "hold": servo_hold.get(sid, True),
+        "angle": servo_angles.get(sid, 0.0),
+        "detach_delay": servo_detach_delay.get(sid, 0.25),
     })
 
 
@@ -2410,6 +2441,7 @@ def servo_status():
             "pin": [SERVO5_PIN if sid == 5 else SERVO6_PIN],
             "enabled": servo_enabled.get(sid, True),
             "hold": servo_hold.get(sid, True),
+            "detach_delay": servo_detach_delay.get(sid, 0.25),
             "range": [SERVO_MIN_ANGLE, SERVO_MAX_ANGLE],
         }
     return jsonify(status)

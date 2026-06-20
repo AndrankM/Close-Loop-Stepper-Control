@@ -852,6 +852,12 @@
           <button id="servo-${i}-power" class="servo-btn on" onclick="toggleServoPower(${i})">Power: ON</button>
           <button id="servo-${i}-hold" class="servo-btn on" onclick="toggleServoHold(${i})">Hold: ON</button>
         </div>
+        <div class="servo-slider" style="margin-top:0.55rem;">
+          <label for="servo-${i}-delay">Detach</label>
+          <input type="range" id="servo-${i}-delay" min="0.05" max="2.0" step="0.05" value="0.25"
+                 oninput="onServoDelayInput(${i}, this.value)" onchange="commitServoDelay(${i}, this.value)">
+          <span class="servo-angle" id="servo-${i}-delay-val">0.25s</span>
+        </div>
       </div>
       `;
     }
@@ -860,6 +866,7 @@
       const powerBtn = document.getElementById(`servo-${sid}-power`);
       const holdBtn = document.getElementById(`servo-${sid}-hold`);
       const slider = document.getElementById(`servo-${sid}`);
+      const delaySlider = document.getElementById(`servo-${sid}-delay`);
       const enabled = !!st.enabled;
       const hold = !!st.hold;
       if (powerBtn) {
@@ -871,7 +878,33 @@
         holdBtn.textContent = `Hold: ${hold ? 'ON' : 'OFF'}`;
       }
       if (slider) slider.disabled = !enabled;
-      servoUiState[sid] = { enabled, hold };
+      if (delaySlider) delaySlider.disabled = !enabled;
+      servoUiState[sid] = {
+        enabled,
+        hold,
+        detach_delay: Number.isFinite(st.detach_delay) ? st.detach_delay : 0.25,
+      };
+    }
+
+    function onServoDelayInput(sid, seconds) {
+      const v = Math.max(0.05, Math.min(2.0, parseFloat(seconds)));
+      const label = document.getElementById(`servo-${sid}-delay-val`);
+      if (label) label.textContent = v.toFixed(2) + 's';
+    }
+
+    async function commitServoDelay(sid, seconds) {
+      const v = Math.max(0.05, Math.min(2.0, parseFloat(seconds)));
+      onServoDelayInput(sid, v);
+      try {
+        const r = await fetch(`/servo/${sid}/detach_delay`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seconds: v }),
+        });
+        if (!r.ok) return;
+        const d = await r.json();
+        applyServoUiState(sid, d);
+      } catch (e) { /* offline */ }
     }
 
     function queueServoSend(sid) {
@@ -911,6 +944,7 @@
         if (!r.ok) return;
         const d = await r.json();
         applyServoUiState(sid, d);
+        if (Number.isFinite(d.detach_delay)) onServoDelayInput(sid, d.detach_delay);
       } catch (e) { /* offline */ }
     }
 
@@ -926,6 +960,7 @@
         if (!r.ok) return;
         const d = await r.json();
         applyServoUiState(sid, d);
+        if (Number.isFinite(d.detach_delay)) onServoDelayInput(sid, d.detach_delay);
       } catch (e) { /* offline */ }
     }
 
@@ -942,9 +977,15 @@
               input.value = d.angle;
               val.textContent = d.angle.toFixed(0) + '°';
             }
+            if (Number.isFinite(d.detach_delay)) {
+              const ds = document.getElementById(`servo-${s.id}-delay`);
+              if (ds) ds.value = d.detach_delay;
+              onServoDelayInput(s.id, d.detach_delay);
+            }
             applyServoUiState(s.id, {
               enabled: d.enabled !== false,
               hold: d.hold !== false,
+              detach_delay: Number.isFinite(d.detach_delay) ? d.detach_delay : 0.25,
             });
           }).catch(() => {});
         } catch (e) { /* offline */ }
