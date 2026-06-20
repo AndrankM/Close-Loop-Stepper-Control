@@ -51,6 +51,8 @@ WorkingDirectory=$APP_DIR
 ExecStart=$PY $APP_DIR/app.py
 Restart=on-failure
 RestartSec=3
+Nice=10
+CPUQuota=70%
 
 [Install]
 WantedBy=multi-user.target

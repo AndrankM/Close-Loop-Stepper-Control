@@ -1081,7 +1081,7 @@ YUNET_MODEL_PATH = os.path.join(_MODELS_DIR, "face_detection_yunet_2023mar.onnx"
 YOLO_CFG_PATH = os.path.join(_MODELS_DIR, "yolov4-tiny.cfg")
 YOLO_WEIGHTS_PATH = os.path.join(_MODELS_DIR, "yolov4-tiny.weights")
 YOLO_NAMES_PATH = os.path.join(_MODELS_DIR, "coco.names")
-OBJ_INPUT_SIZE = 320
+OBJ_INPUT_SIZE = 224          # 224 vs 320 cuts inference ~50% with minor accuracy loss
 OBJ_CONF_THRESHOLD = 0.45
 OBJ_NMS_THRESHOLD = 0.4
 
@@ -1290,10 +1290,14 @@ class EmotionCamera:
                 objs = self._detect_objects(frame)
             except Exception:
                 objs = []
+            elapsed = time.time() - t0
             with self._lock:
                 self._objects = objs
-                self._obj_ms = (time.time() - t0) * 1000.0
-            time.sleep(0.02)
+                self._obj_ms = elapsed * 1000.0
+            # throttle to ~3 fps max (0.33 s budget) to keep CPU load manageable
+            leftover = 0.33 - elapsed
+            if leftover > 0:
+                time.sleep(leftover)
         with self._lock:
             self._objects = []
 
@@ -1336,7 +1340,6 @@ class EmotionCamera:
         except Exception:
             pass
         self._cap = self._open_capture()
-        frame_interval = 1.0 / 15.0
         t_fps = time.time()
         n = 0
         fail = 0
@@ -1425,6 +1428,9 @@ class EmotionCamera:
                         "dominant": None, "infer_ms": round(infer_ms, 1),
                         "fps": round(self._fps, 1),
                     }
+            # slow to 10 fps when object detection is running to share CPU
+            target_fps = 10.0 if self._obj_enabled else 15.0
+            frame_interval = 1.0 / target_fps
             dt = time.time() - t0
             if dt < frame_interval:
                 time.sleep(frame_interval - dt)
