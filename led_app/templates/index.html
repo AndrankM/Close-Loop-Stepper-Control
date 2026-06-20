@@ -830,14 +830,14 @@
 
     async function setServoAngle(sid, angle) {
       angle = Math.max(-90, Math.min(90, parseFloat(angle)));
-      document.getElementById(\`servo-\${sid}-val\`).textContent = angle.toFixed(0) + '°';
+      document.getElementById(`servo-${sid}-val`).textContent = angle.toFixed(0) + '°';
       try {
-        const r = await fetch(\`/servo/\${sid}/angle\`, {
+        const r = await fetch(`/servo/${sid}/angle`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ angle }),
         });
-        if (!r.ok) console.error(\`servo \${sid} error\`);
+        if (!r.ok) console.error(`servo ${sid} error`);
       } catch (e) { /* offline */ }
     }
 
@@ -847,9 +847,9 @@
       container.innerHTML = SERVOS.map(servoHTML).join('');
       SERVOS.forEach(s => {
         try {
-          fetch(\`/servo/\${s.id}/angle\`).then(r => r.json()).then(d => {
-            const input = document.getElementById(\`servo-\${s.id}\`);
-            const val = document.getElementById(\`servo-\${s.id}-val\`);
+          fetch(`/servo/${s.id}/angle`).then(r => r.json()).then(d => {
+            const input = document.getElementById(`servo-${s.id}`);
+            const val = document.getElementById(`servo-${s.id}-val`);
             if (input && d.angle) {
               input.value = d.angle;
               val.textContent = d.angle.toFixed(0) + '°';
