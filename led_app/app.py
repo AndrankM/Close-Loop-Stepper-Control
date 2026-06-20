@@ -54,6 +54,14 @@ except Exception:  # pigpio module missing
     pigpio = None
     PIGPIO_AVAILABLE = False
 
+try:
+    import spidev
+
+    SPIDEV_AVAILABLE = True
+except Exception:  # spidev module missing
+    spidev = None
+    SPIDEV_AVAILABLE = False
+
 app = Flask(__name__)
 
 # ---------------------------------------------------------------------------
@@ -1117,9 +1125,15 @@ _FERPLUS_TO_UI = {
 UI_EMOTIONS = ["happy", "neutral", "surprise", "sad", "angry", "fear"]
 
 # Addressable LED rings (2 x WS2812B, 8 LEDs each) sharing one data line.
-RING_PIN = 18
+# On the Raspberry Pi 5 the classic DMA/PWM drivers (rpi_ws281x, pigpio) do not
+# work because the GPIO block moved to the RP1 chip. The reliable method is to
+# clock the WS2812 protocol out of the SPI peripheral (MOSI = GPIO10, pin 19).
+RING_PIN = 10                 # SPI0 MOSI (physical pin 19) when using the SPI backend
 RING_LED_COUNT = 8
-RING_BRIGHTNESS = 80
+RING_BRIGHTNESS = 80          # 0-255 global brightness ceiling
+RING_SPI_BUS = 0
+RING_SPI_DEV = 0
+RING_SPI_HZ = 2400000         # 3 SPI bits per WS2812 bit -> ~417 ns/bit
 
 
 class EmotionCamera:
@@ -1526,8 +1540,9 @@ camera = EmotionCamera()
 class EmotionRings:
     """Animate WS2812 rings according to detected emotion.
 
-    Current wiring: both 8-LED rings share one data line on GPIO18, so they
-    display the same animation in parallel.
+    Both 8-LED rings share one data line. On the Raspberry Pi 5 the data line is
+    driven from the SPI peripheral (MOSI = GPIO10, physical pin 19); the legacy
+    ws281x / pigpio DMA-PWM backends are kept as fallbacks for older boards.
     """
 
     UPDATE_DT = 0.06
@@ -1540,6 +1555,7 @@ class EmotionRings:
         self.error = None
         self._strip = None
         self._pi = None
+        self._spi = None
         self._enabled = True
         self._running = False
         self._thread = None
@@ -1547,13 +1563,32 @@ class EmotionRings:
         self._last_emotion = "neutral"
         self._last_seen_ts = 0.0
         self._rng_state = 0xC0FFEE
+        spi_err = None
+        if SPIDEV_AVAILABLE:
+            try:
+                self._spi = spidev.SpiDev()
+                self._spi.open(RING_SPI_BUS, RING_SPI_DEV)
+                self._spi.max_speed_hz = RING_SPI_HZ
+                self._spi.mode = 0
+                self.available = True
+                self.backend = "spi"
+                self._blackout()
+                return
+            except Exception as e:
+                spi_err = e
+                if self._spi is not None:
+                    try:
+                        self._spi.close()
+                    except Exception:
+                        pass
+                self._spi = None
+
         ws_err = None
         if WS281X_AVAILABLE:
             try:
-                # Shared output: both rings are connected to GPIO18.
                 self._strip = PixelStrip(
                     RING_LED_COUNT,
-                    RING_PIN,
+                    18,
                     800000,
                     10,
                     False,
@@ -1575,7 +1610,7 @@ class EmotionRings:
                 self._pi = pigpio.pi()
                 if not self._pi.connected:
                     raise RuntimeError("pigpiod not reachable")
-                self._pi.set_mode(RING_PIN, pigpio.OUTPUT)
+                self._pi.set_mode(18, pigpio.OUTPUT)
                 self.available = True
                 self.backend = "pigpio"
                 self._blackout()
@@ -1589,7 +1624,8 @@ class EmotionRings:
                         pass
                 self._pi = None
 
-        self.error = "init failed: ws281x=%r pigpio=%r" % (ws_err, pig_err)
+        self.error = "init failed: spi=%r ws281x=%r pigpio=%r" % (
+            spi_err, ws_err, pig_err)
 
     @staticmethod
     def _clamp_u8(v):
@@ -1619,11 +1655,45 @@ class EmotionRings:
         self._rng_state = (1103515245 * self._rng_state + 12345) & 0x7FFFFFFF
         return self._rng_state & 0xFF
 
+    def _spi_show(self, colors):
+        """Clock one WS2812 frame out of SPI MOSI (GRB order).
+
+        Each WS2812 bit becomes 3 SPI bits at ~2.4 MHz: a '1' is 0b110 (long
+        high), a '0' is 0b100 (short high). 8 data bits -> 24 SPI bits -> 3
+        bytes, so encoding always lands on byte boundaries.
+        """
+        if self._spi is None:
+            raise RuntimeError("spi backend unavailable")
+        scale = RING_BRIGHTNESS / 255.0
+        bits = []
+        for (r, g, b) in colors:
+            gr = int(g * scale)
+            rd = int(r * scale)
+            bl = int(b * scale)
+            for byte in (gr, rd, bl):
+                for i in range(7, -1, -1):
+                    if (byte >> i) & 1:
+                        bits.extend((1, 1, 0))
+                    else:
+                        bits.extend((1, 0, 0))
+        out = bytearray()
+        for i in range(0, len(bits), 8):
+            chunk = bits[i:i + 8]
+            while len(chunk) < 8:
+                chunk.append(0)
+            byte = 0
+            for bit in chunk:
+                byte = (byte << 1) | bit
+            out.append(byte)
+        # Trailing zero bytes hold the line low for the >50 us reset latch.
+        out.extend(b"\x00" * 40)
+        self._spi.writebytes2(out)
+
     def _pigpio_show(self, colors):
         """Send one WS2812 frame through pigpio waves (GRB, 800kHz)."""
         if self._pi is None:
             raise RuntimeError("pigpio backend unavailable")
-        pin_mask = 1 << RING_PIN
+        pin_mask = 1 << 18
         # Approximate WS2812 timings in microseconds.
         t0h, t0l = 1, 1
         t1h, t1l = 1, 1
@@ -1652,6 +1722,9 @@ class EmotionRings:
 
     def _apply(self, ring1_colors, ring2_colors):
         if not self.available:
+            return
+        if self.backend == "spi":
+            self._spi_show(ring1_colors)
             return
         if self.backend == "ws281x":
             if not self._strip:
@@ -1766,12 +1839,13 @@ class EmotionRings:
         return self._enabled
 
     def status(self):
+        data_pin = 10 if self.backend == "spi" else 18
         return {
             "available": self.available,
             "backend": self.backend,
             "enabled": self._enabled,
             "running": self._running,
-            "pins": [RING_PIN],
+            "pins": [data_pin],
             "count": RING_LED_COUNT,
             "emotion": self._last_emotion,
             "error": self.error,
