@@ -10,13 +10,14 @@ import subprocess
 from flask import Flask, jsonify, render_template, request, Response
 
 try:
-    from gpiozero import DigitalOutputDevice, PWMOutputDevice, DigitalInputDevice
+    from gpiozero import DigitalOutputDevice, PWMOutputDevice, DigitalInputDevice, Servo
 
     GPIO_AVAILABLE = True
 except Exception:  # gpiozero not installed / not running on a Pi
     DigitalOutputDevice = None
     PWMOutputDevice = None
     DigitalInputDevice = None
+    Servo = None
     GPIO_AVAILABLE = False
 
 try:
@@ -394,6 +395,11 @@ MOTOR4_GEAR_RATIO = 1.0
 M3_LIMIT_PIN = 26
 M4_LIMIT_PIN = 19
 
+# Servo motors for axis 5 & 6 (standard RC servos with 50 Hz PWM).
+# GPIO 12/13 are hardware PWM (PWM0 ch0/ch1) on the Pi 5.
+SERVO5_PIN = 12  # physical pin 32
+SERVO6_PIN = 13  # physical pin 33
+
 # Driver enable pin is active-LOW: drive LOW to energize the coils.
 EN_ACTIVE_LOW = True
 
@@ -737,6 +743,16 @@ motors = {
         EN4_PIN, STP4_PIN, DIR4_PIN, MOTOR4_GEAR_RATIO, limit_pin=M4_LIMIT_PIN,
     ),
 }
+
+# Standard RC servo motors on hardware PWM. Angle range -90 to 90 degrees (standard
+# servo travel; 0 = center, ±90 = extreme CW/CCW).
+servos = {}
+if GPIO_AVAILABLE and Servo is not None:
+    try:
+        servos[5] = Servo(SERVO5_PIN)
+        servos[6] = Servo(SERVO6_PIN)
+    except Exception:
+        pass  # Servo pins unavailable.
 
 
 # ---------------------------------------------------------------------------
@@ -2199,6 +2215,35 @@ def motor_encoder(mid):
     if enc is None:
         return jsonify({"error": "unknown motor"}), 404
     return jsonify(enc.read())
+
+
+# -- Servo motors (axis 5 & 6) -------------------------------------------------
+@app.route("/servo/<int:sid>/angle", methods=["GET", "POST"])
+def servo_angle(sid):
+    """Get or set a servo's angle (-90 to 90 degrees)."""
+    if sid not in servos:
+        return jsonify({"error": f"servo {sid} not available"}), 404
+    servo = servos[sid]
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        angle = float(data.get("angle", 0))
+        angle = max(-90, min(90, angle))
+        servo.value = angle / 90.0
+        return jsonify({"servo": sid, "angle": angle})
+    return jsonify({"servo": sid, "angle": servo.value * 90.0})
+
+
+@app.route("/servo/status")
+def servo_status():
+    """Return status of all servos."""
+    status = {}
+    for sid, servo in servos.items():
+        status[sid] = {
+            "available": True,
+            "angle": servo.value * 90.0,
+            "pin": [SERVO5_PIN if sid == 5 else SERVO6_PIN],
+        }
+    return jsonify(status)
 
 
 # -- Robot arm: teach & playback -------------------------------------------

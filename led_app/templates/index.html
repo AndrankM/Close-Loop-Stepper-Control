@@ -283,6 +283,38 @@
       letter-spacing: 0.08em;
     }
 
+    /* --- Servo motors --- */
+    .servo-card { margin-bottom: 1.5rem; }
+    .servo-unit {
+      padding: 1rem;
+      background: #0f1219;
+      border: 1px solid #2a3650;
+      border-radius: 8px;
+    }
+    .servo-unit .card-title { font-size: 0.95rem; margin-bottom: 0.75rem; }
+    .servo-slider {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .servo-slider label {
+      min-width: 3rem;
+      color: #9aa4bf;
+      font-size: 0.9rem;
+    }
+    .servo-slider input[type="range"] {
+      flex: 1;
+      accent-color: #4a78ff;
+    }
+    .servo-angle {
+      min-width: 3.5rem;
+      text-align: right;
+      color: #a0cfff;
+      font-weight: bold;
+      font-size: 0.9rem;
+    }
+
     /* --- Encoder card --- */
     .encoder-grid {
       display: grid;
@@ -716,6 +748,13 @@
 
   <div class="units" id="units"></div>
 
+  <div class="teach servo-card">
+    <div class="card-title">Servo Motors &middot; Axis 5 &amp; 6</div>
+    <div id="servo-controls" style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+      <!-- Populated by JS -->
+    </div>
+  </div>
+
   <div class="teach">
     <div class="card-title">Teach &amp; Playback</div>
 
@@ -765,9 +804,60 @@
     const MOTORS = [
       { id: 1, name: 'Motor 1', gear: 5, wiring: 'EN GPIO17 · STP GPIO27 · DIR GPIO22 · addr 0xE0 · 5:1 planetary' },
       { id: 2, name: 'Motor 2', gear: 5, wiring: 'EN GPIO2 · STP GPIO3 · DIR GPIO4 · addr 0xE1 · 5:1 planetary' },
-      { id: 3, name: 'Motor 3', gear: 1, limits: true, wiring: 'EN GPIO10 · STP GPIO9 · DIR GPIO11 · addr 0xE2 · direct drive · end-stop GPIO26 (shared)' },
+      { id: 3, name: 'Motor 3', gear: 1, limits: true, wiring: 'EN GPIO23 · STP GPIO24 · DIR GPIO25 · addr 0xE2 · direct drive · end-stop GPIO26 (shared)' },
       { id: 4, name: 'Motor 4', gear: 1, limits: true, wiring: 'EN GPIO16 · STP GPIO20 · DIR GPIO21 · addr 0xE3 · direct drive · end-stop GPIO19 (shared)' },
     ];
+
+    const SERVOS = [
+      { id: 5, name: 'Axis 5', pin: 12 },
+      { id: 6, name: 'Axis 6', pin: 13 },
+    ];
+
+    function servoHTML(s) {
+      const i = s.id;
+      return `
+      <div class="servo-unit">
+        <div class="card-title">${s.name} <small>GPIO${s.pin}</small></div>
+        <div class="servo-slider">
+          <label for="servo-${i}">Angle</label>
+          <input type="range" id="servo-${i}" min="-90" max="90" value="0" step="1"
+                 oninput="setServoAngle(${i}, this.value)">
+          <span class="servo-angle" id="servo-${i}-val">0°</span>
+        </div>
+      </div>
+      `;
+    }
+
+    async function setServoAngle(sid, angle) {
+      angle = Math.max(-90, Math.min(90, parseFloat(angle)));
+      document.getElementById(\`servo-\${sid}-val\`).textContent = angle.toFixed(0) + '°';
+      try {
+        const r = await fetch(\`/servo/\${sid}/angle\`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ angle }),
+        });
+        if (!r.ok) console.error(\`servo \${sid} error\`);
+      } catch (e) { /* offline */ }
+    }
+
+    async function initServos() {
+      const container = document.getElementById('servo-controls');
+      if (!container) return;
+      container.innerHTML = SERVOS.map(servoHTML).join('');
+      SERVOS.forEach(s => {
+        try {
+          fetch(\`/servo/\${s.id}/angle\`).then(r => r.json()).then(d => {
+            const input = document.getElementById(\`servo-\${s.id}\`);
+            const val = document.getElementById(\`servo-\${s.id}-val\`);
+            if (input && d.angle) {
+              input.value = d.angle;
+              val.textContent = d.angle.toFixed(0) + '°';
+            }
+          }).catch(() => {});
+        } catch (e) { /* offline */ }
+      });
+    }
 
     function unitHTML(m) {
       const i = m.id;
@@ -1804,6 +1894,7 @@ ${m.limits ? `
 
     renderWaypoints();
     refreshPrograms();
+    initServos();
   </script>
 </body>
 </html>
