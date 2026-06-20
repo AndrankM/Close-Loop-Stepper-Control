@@ -37,6 +37,15 @@ except Exception:  # opencv not installed / headless dev box
     np = None
     CV2_AVAILABLE = False
 
+try:
+    from rpi_ws281x import PixelStrip, Color
+
+    WS281X_AVAILABLE = True
+except Exception:  # ws281x library missing / not running on a Pi
+    PixelStrip = None
+    Color = None
+    WS281X_AVAILABLE = False
+
 app = Flask(__name__)
 
 # ---------------------------------------------------------------------------
@@ -1099,6 +1108,12 @@ _FERPLUS_TO_UI = {
 }
 UI_EMOTIONS = ["happy", "neutral", "surprise", "sad", "angry", "fear"]
 
+# Addressable LED rings (2 x WS2812B, 8 LEDs each).
+RING1_PIN = 23
+RING2_PIN = 24
+RING_LED_COUNT = 8
+RING_BRIGHTNESS = 80
+
 
 class EmotionCamera:
     """USB camera capture + face detection + FER+ emotion inference.
@@ -1464,6 +1479,11 @@ class EmotionCamera:
         with self._lock:
             return dict(self._result)
 
+    def peek_result(self):
+        """Return the latest emotion result without starting camera capture."""
+        with self._lock:
+            return dict(self._result)
+
     def snapshot(self):
         if not self.ensure_started():
             return None
@@ -1494,6 +1514,230 @@ class EmotionCamera:
 
 
 camera = EmotionCamera()
+
+
+class EmotionRings:
+    """Animate two WS2812 rings according to detected emotion."""
+
+    UPDATE_DT = 0.06
+    HOLD_LAST_S = 1.8
+
+    def __init__(self, camera):
+        self.camera = camera
+        self.available = WS281X_AVAILABLE
+        self.error = None
+        self._ring1 = None
+        self._ring2 = None
+        self._enabled = True
+        self._running = False
+        self._thread = None
+        self._step = 0
+        self._last_emotion = "neutral"
+        self._last_seen_ts = 0.0
+        self._rng_state = 0xC0FFEE
+        if not self.available:
+            self.error = "rpi_ws281x module not available"
+            return
+        try:
+            # Two independent outputs (one ring per GPIO pin).
+            # The ws281x backend exposes two hardware channels; using distinct
+            # channels avoids bus contention between the two rings.
+            self._ring1 = PixelStrip(
+                RING_LED_COUNT,
+                RING1_PIN,
+                800000,
+                10,
+                False,
+                RING_BRIGHTNESS,
+                0,
+            )
+            self._ring2 = PixelStrip(
+                RING_LED_COUNT,
+                RING2_PIN,
+                800000,
+                11,
+                False,
+                RING_BRIGHTNESS,
+                1,
+            )
+            self._ring1.begin()
+            self._ring2.begin()
+            self._blackout()
+        except Exception as e:
+            self.available = False
+            self.error = "init failed: %r" % (e,)
+            self._ring1 = None
+            self._ring2 = None
+
+    @staticmethod
+    def _clamp_u8(v):
+        return max(0, min(255, int(round(v))))
+
+    @classmethod
+    def _scale(cls, rgb, factor):
+        return (
+            cls._clamp_u8(rgb[0] * factor),
+            cls._clamp_u8(rgb[1] * factor),
+            cls._clamp_u8(rgb[2] * factor),
+        )
+
+    @staticmethod
+    def _wheel(pos):
+        pos = int(pos) % 256
+        if pos < 85:
+            return (pos * 3, 255 - pos * 3, 0)
+        if pos < 170:
+            pos -= 85
+            return (255 - pos * 3, 0, pos * 3)
+        pos -= 170
+        return (0, pos * 3, 255 - pos * 3)
+
+    def _rand_u8(self):
+        # Lightweight deterministic PRNG for flicker/spark animation.
+        self._rng_state = (1103515245 * self._rng_state + 12345) & 0x7FFFFFFF
+        return self._rng_state & 0xFF
+
+    def _apply(self, ring1_colors, ring2_colors):
+        if not self.available or not self._ring1 or not self._ring2:
+            return
+        for i in range(RING_LED_COUNT):
+            c1 = ring1_colors[i]
+            c2 = ring2_colors[i]
+            self._ring1.setPixelColor(i, Color(c1[0], c1[1], c1[2]))
+            self._ring2.setPixelColor(i, Color(c2[0], c2[1], c2[2]))
+        self._ring1.show()
+        self._ring2.show()
+
+    def _blackout(self):
+        off = [(0, 0, 0)] * RING_LED_COUNT
+        self._apply(off, off)
+
+    def _render(self, emotion, step):
+        """Return (ring1_colors, ring2_colors) for the active emotion."""
+        t = step
+        if emotion == "happy":
+            # Fast rainbow swirl with opposite spin on the second ring.
+            a = [self._wheel(i * 32 + t * 8) for i in range(RING_LED_COUNT)]
+            b = [self._wheel((RING_LED_COUNT - 1 - i) * 32 + t * 8)
+                 for i in range(RING_LED_COUNT)]
+            return a, b
+
+        if emotion == "sad":
+            # Slow blue breathing.
+            breath = (1.0 + np.sin(t / 10.0)) * 0.5 if np is not None else 0.5
+            base = self._scale((30, 70, 255), 0.12 + 0.55 * breath)
+            cols = [base] * RING_LED_COUNT
+            return cols, cols
+
+        if emotion == "angry":
+            # Red pulse with occasional hot-orange sparks.
+            pulse = (1.0 + np.sin(t / 2.2)) * 0.5 if np is not None else 0.5
+            base = self._scale((255, 18, 0), 0.45 + 0.5 * pulse)
+            a = [base] * RING_LED_COUNT
+            b = [base] * RING_LED_COUNT
+            if t % 3 == 0:
+                idx = (t // 3) % RING_LED_COUNT
+                spark = (255, 100, 0)
+                a[idx] = spark
+                b[(RING_LED_COUNT - 1 - idx)] = spark
+            return a, b
+
+        if emotion == "fear":
+            # Uneasy violet flicker.
+            a, b = [], []
+            for i in range(RING_LED_COUNT):
+                f1 = 0.12 + (self._rand_u8() / 255.0) * 0.55
+                f2 = 0.12 + (self._rand_u8() / 255.0) * 0.55
+                a.append(self._scale((130, 0, 255), f1))
+                b.append(self._scale((100, 0, 220), f2))
+            return a, b
+
+        if emotion == "surprise":
+            # White flash + cyan orbit.
+            flash = (t % 6) in (0, 1)
+            if flash:
+                bright = [(255, 255, 255)] * RING_LED_COUNT
+                return bright, bright
+            idx = (t // 2) % RING_LED_COUNT
+            a = [(15, 30, 40)] * RING_LED_COUNT
+            b = [(15, 30, 40)] * RING_LED_COUNT
+            a[idx] = (0, 220, 255)
+            b[(RING_LED_COUNT - 1 - idx)] = (0, 220, 255)
+            return a, b
+
+        if emotion == "neutral":
+            # Calm mint ring with gentle rotating highlight.
+            idx = (t // 3) % RING_LED_COUNT
+            a = [(8, 40, 32)] * RING_LED_COUNT
+            b = [(8, 40, 32)] * RING_LED_COUNT
+            a[idx] = (80, 180, 150)
+            b[(RING_LED_COUNT - 1 - idx)] = (80, 180, 150)
+            return a, b
+
+        # No face / unknown: low-power amber heartbeat.
+        beat = 0.10 + (0.18 if (t % 24) in (0, 1, 2) else 0.0)
+        dim = self._scale((255, 120, 20), beat)
+        cols = [dim] * RING_LED_COUNT
+        return cols, cols
+
+    def _pick_emotion(self):
+        data = self.camera.peek_result()
+        now = time.time()
+        if data.get("emo_enabled") and data.get("live") and data.get("face"):
+            dom = data.get("dominant")
+            if dom in UI_EMOTIONS:
+                self._last_emotion = dom
+                self._last_seen_ts = now
+                return dom
+        if now - self._last_seen_ts < self.HOLD_LAST_S:
+            return self._last_emotion
+        return None
+
+    def ensure_started(self):
+        if not self.available:
+            return False
+        if self._running:
+            return True
+        self._running = True
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        return True
+
+    def set_enabled(self, on):
+        self._enabled = bool(on)
+        if not self._enabled:
+            self._blackout()
+        return self._enabled
+
+    def status(self):
+        return {
+            "available": self.available,
+            "enabled": self._enabled,
+            "running": self._running,
+            "pins": [RING1_PIN, RING2_PIN],
+            "count": RING_LED_COUNT,
+            "emotion": self._last_emotion,
+            "error": self.error,
+        }
+
+    def _run(self):
+        while self._running:
+            try:
+                if not self._enabled:
+                    time.sleep(0.2)
+                    continue
+                emotion = self._pick_emotion()
+                ring1, ring2 = self._render(emotion, self._step)
+                self._apply(ring1, ring2)
+                self._step += 1
+            except Exception as e:
+                # Keep the service alive even if LED IO glitches.
+                self.error = "runtime failed: %r" % (e,)
+            time.sleep(self.UPDATE_DT)
+
+
+rings = EmotionRings(camera)
+rings.ensure_started()
 
 
 @app.route("/")
@@ -1577,6 +1821,19 @@ def emotion_enable():
     on = bool(data.get("on", True))
     enabled = camera.set_emotion(on)
     return jsonify({"enabled": enabled})
+
+
+@app.route("/emotion/rings", methods=["GET", "POST"])
+def emotion_rings():
+    """Get or set emotion-ring animation state."""
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        on = bool(data.get("on", True))
+        enabled = rings.set_enabled(on)
+        st = rings.status()
+        st["enabled"] = enabled
+        return jsonify(st)
+    return jsonify(rings.status())
 
 
 @app.route("/objects/enable", methods=["POST"])
