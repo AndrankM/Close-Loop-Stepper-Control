@@ -1139,6 +1139,7 @@ class EmotionCamera:
         self._obj_enabled = False
         self._obj_thread = None
         self._obj_ms = 0.0
+        self._emo_enabled = True    # emotion detection on by default
 
     @staticmethod
     def _empty_result():
@@ -1301,6 +1302,11 @@ class EmotionCamera:
         with self._lock:
             self._objects = []
 
+    def set_emotion(self, on):
+        """Enable/disable face + emotion classification."""
+        self._emo_enabled = bool(on)
+        return self._emo_enabled
+
     def set_objects(self, on):
         """Enable/disable the object-detection thread."""
         on = bool(on) and self.obj_available
@@ -1364,16 +1370,18 @@ class EmotionCamera:
                 with self._lock:
                     self._frame = frame.copy()
             t0 = time.time()
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            emo_on = self._emo_enabled
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if emo_on else None
             box = None
             scores = None
-            try:
-                box = self._detect_face(frame, gray)
-                if box is not None and self._emo_net is not None:
-                    scores = self._classify(gray, box)
-            except Exception:
-                box = None
-                scores = None
+            if emo_on:
+                try:
+                    box = self._detect_face(frame, gray)
+                    if box is not None and self._emo_net is not None:
+                        scores = self._classify(gray, box)
+                except Exception:
+                    box = None
+                    scores = None
             infer_ms = (time.time() - t0) * 1000.0
 
             if box is not None:
@@ -1415,7 +1423,7 @@ class EmotionCamera:
                 if scores is not None:
                     dom = max(scores, key=scores.get)
                     self._result = {
-                        "live": True, "face": 1,
+                        "live": True, "face": 1, "emo_enabled": True,
                         "box": [box[0], box[1], box[2], box[3]],
                         "scores": scores, "dominant": dom,
                         "infer_ms": round(infer_ms, 1),
@@ -1423,7 +1431,9 @@ class EmotionCamera:
                     }
                 else:
                     self._result = {
-                        "live": True, "face": None, "box": None,
+                        "live": True, "face": None,
+                        "emo_enabled": self._emo_enabled,
+                        "box": None,
                         "scores": {k: 0.0 for k in UI_EMOTIONS},
                         "dominant": None, "infer_ms": round(infer_ms, 1),
                         "fps": round(self._fps, 1),
@@ -1558,6 +1568,15 @@ def objects_latest():
         }
     """
     return jsonify(camera.objects_result())
+
+
+@app.route("/emotion/enable", methods=["POST"])
+def emotion_enable():
+    """Turn emotion detection on or off ({"on": true|false})."""
+    data = request.get_json(silent=True) or {}
+    on = bool(data.get("on", True))
+    enabled = camera.set_emotion(on)
+    return jsonify({"enabled": enabled})
 
 
 @app.route("/objects/enable", methods=["POST"])

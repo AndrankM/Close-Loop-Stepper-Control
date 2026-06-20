@@ -697,6 +697,9 @@
         </div>
         <div id="cc-bars"></div>
         <div class="cc-hint" id="cc-hint">On-device YuNet face detection + FER+ emotion model.</div>
+        <div class="cc-obj" style="margin-top:0.5rem;">
+          <button class="cc-obj-btn on" id="cc-emo-toggle" onclick="toggleEmotion()">&#128513; Emotion: ON</button>
+        </div>
         <div class="cc-obj">
           <button class="cc-obj-btn" id="cc-obj-toggle" onclick="toggleObjects()">&#127919; Detect objects: OFF</button>
           <div class="cc-obj-primary" id="cc-obj-primary" style="display:none;"></div>
@@ -1326,6 +1329,18 @@ ${m.limits ? `
             body: JSON.stringify({ on: false }),
           }).catch(function () {});
         }
+        if (!emotionOn) {                   // restore emotion toggle on camera close
+          emotionOn = true;
+          const eb = document.getElementById('cc-emo-toggle');
+          eb.classList.add('on');
+          eb.innerHTML = '\u{1F603} Emotion: ON';
+          const side = document.querySelector('.cc-side');
+          if (side) side.style.opacity = '';
+          fetch('/emotion/enable', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ on: true }),
+          }).catch(function () {});
+        }
         img.src = '';                       // release the MJPEG connection -> camera idles
         img.style.display = 'none';
         document.getElementById('cc-placeholder').style.display = '';
@@ -1360,6 +1375,37 @@ ${m.limits ? `
           document.getElementById('cc-conf').textContent = d.live ? 'searching\u2026' : 'camera off';
         }
       } catch (e) { /* offline */ }
+    }
+
+    // ---- emotion toggle ----
+    let emotionOn = true;
+
+    async function toggleEmotion() {
+      emotionOn = !emotionOn;
+      const btn = document.getElementById('cc-emo-toggle');
+      btn.classList.toggle('on', emotionOn);
+      btn.innerHTML = '&#128513; Emotion: ' + (emotionOn ? 'ON' : 'OFF');
+      // dim verdict + bars when off
+      const side = document.querySelector('.cc-side');
+      if (side) side.style.opacity = emotionOn ? '' : '0.35';
+      try {
+        await fetch('/emotion/enable', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ on: emotionOn }),
+        });
+      } catch (e) { /* offline */ }
+      if (!emotionOn) {
+        document.getElementById('cc-emoji').textContent = '\u2796';
+        document.getElementById('cc-label').textContent = 'off';
+        document.getElementById('cc-conf').textContent = '\u2014';
+        CC_EMOTIONS.forEach(e => {
+          const bar = document.getElementById('cc-bar-' + e.key);
+          const val = document.getElementById('cc-val-' + e.key);
+          if (bar) bar.style.width = '0%';
+          if (val) val.textContent = '0%';
+        });
+      }
     }
 
     // ---- object detection ----
