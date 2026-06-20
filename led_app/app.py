@@ -1077,6 +1077,14 @@ _MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 FER_MODEL_PATH = os.path.join(_MODELS_DIR, "emotion-ferplus-8.onnx")
 YUNET_MODEL_PATH = os.path.join(_MODELS_DIR, "face_detection_yunet_2023mar.onnx")
 
+# Object detection (YOLOv4-tiny, COCO 80 classes, run via cv2.dnn DetectionModel).
+YOLO_CFG_PATH = os.path.join(_MODELS_DIR, "yolov4-tiny.cfg")
+YOLO_WEIGHTS_PATH = os.path.join(_MODELS_DIR, "yolov4-tiny.weights")
+YOLO_NAMES_PATH = os.path.join(_MODELS_DIR, "coco.names")
+OBJ_INPUT_SIZE = 320
+OBJ_CONF_THRESHOLD = 0.45
+OBJ_NMS_THRESHOLD = 0.4
+
 # FER+ raw output order (8 classes).
 _FERPLUS_LABELS = [
     "neutral", "happiness", "surprise", "sadness",
@@ -1110,6 +1118,8 @@ class EmotionCamera:
         self.width = width
         self.height = height
         self.available = CV2_AVAILABLE and os.path.exists(FER_MODEL_PATH)
+        self.obj_available = (CV2_AVAILABLE and os.path.exists(YOLO_WEIGHTS_PATH)
+                              and os.path.exists(YOLO_CFG_PATH))
         self._lock = threading.Lock()
         self._thread = None
         self._running = False
@@ -1121,6 +1131,14 @@ class EmotionCamera:
         self._result = self._empty_result()
         self._last_active = 0.0
         self._fps = 0.0
+        # object detection
+        self._frame = None            # latest raw frame for the object thread
+        self._obj_model = None
+        self._obj_classes = []
+        self._objects = []
+        self._obj_enabled = False
+        self._obj_thread = None
+        self._obj_ms = 0.0
 
     @staticmethod
     def _empty_result():
@@ -1209,6 +1227,108 @@ class EmotionCamera:
         total = sum(ui.values()) or 1.0
         return {k: v / total for k, v in ui.items()}
 
+    # -- object detection ------------------------------------------------
+    def _load_object_model(self):
+        if self._obj_model is not None:
+            return
+        if not (os.path.exists(YOLO_WEIGHTS_PATH) and os.path.exists(YOLO_CFG_PATH)):
+            return
+        net = cv2.dnn.readNetFromDarknet(YOLO_CFG_PATH, YOLO_WEIGHTS_PATH)
+        net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
+        net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
+        model = cv2.dnn.DetectionModel(net)
+        model.setInputParams(size=(OBJ_INPUT_SIZE, OBJ_INPUT_SIZE),
+                             scale=1.0 / 255.0, swapRB=True)
+        self._obj_model = model
+        if os.path.exists(YOLO_NAMES_PATH):
+            with open(YOLO_NAMES_PATH) as f:
+                self._obj_classes = [ln.strip() for ln in f if ln.strip()]
+
+    def _detect_objects(self, frame):
+        """Run YOLO on a frame, return a list of object dicts (sorted by conf)."""
+        classes, confs, boxes = self._obj_model.detect(
+            frame, OBJ_CONF_THRESHOLD, OBJ_NMS_THRESHOLD)
+        classes = np.array(classes).reshape(-1)
+        confs = np.array(confs).reshape(-1)
+        boxes = np.array(boxes).reshape(-1, 4) if len(boxes) else np.empty((0, 4))
+        w_f, h_f = float(self.width), float(self.height)
+        objs = []
+        for cid, conf, box in zip(classes, confs, boxes):
+            x, y, w, h = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
+            cx, cy = x + w / 2.0, y + h / 2.0
+            cid = int(cid)
+            label = self._obj_classes[cid] if cid < len(self._obj_classes) else str(cid)
+            objs.append({
+                "label": label,
+                "confidence": round(float(conf), 3),
+                "box": [x, y, w, h],
+                "center": [int(round(cx)), int(round(cy))],
+                # offset from frame centre, normalised to -1..1 (feed to motors)
+                "offset": [round((cx / w_f) * 2.0 - 1.0, 3),
+                           round((cy / h_f) * 2.0 - 1.0, 3)],
+                "area": w * h,
+            })
+        objs.sort(key=lambda o: o["confidence"], reverse=True)
+        return objs
+
+    def _obj_run(self):
+        try:
+            self._load_object_model()
+        except Exception:
+            self._obj_model = None
+        if self._obj_model is None:
+            self._obj_enabled = False
+            return
+        while self._running and self._obj_enabled:
+            with self._lock:
+                frame = None if self._frame is None else self._frame.copy()
+            if frame is None:
+                time.sleep(0.05)
+                continue
+            t0 = time.time()
+            try:
+                objs = self._detect_objects(frame)
+            except Exception:
+                objs = []
+            with self._lock:
+                self._objects = objs
+                self._obj_ms = (time.time() - t0) * 1000.0
+            time.sleep(0.02)
+        with self._lock:
+            self._objects = []
+
+    def set_objects(self, on):
+        """Enable/disable the object-detection thread."""
+        on = bool(on) and self.obj_available
+        self._obj_enabled = on
+        if on:
+            self.ensure_started()
+            with self._lock:
+                alive = self._obj_thread is not None and self._obj_thread.is_alive()
+                if not alive:
+                    self._obj_thread = threading.Thread(
+                        target=self._obj_run, daemon=True)
+                    self._obj_thread.start()
+        return self._obj_enabled
+
+    def objects_result(self):
+        self.ensure_started()
+        with self._lock:
+            objs = list(self._objects)
+            enabled = self._obj_enabled
+            running = self._running
+            obj_ms = self._obj_ms
+        return {
+            "available": self.obj_available,
+            "enabled": enabled,
+            "live": running and enabled,
+            "frame": [self.width, self.height],
+            "count": len(objs),
+            "objects": objs,
+            "primary": objs[0] if objs else None,
+            "infer_ms": round(obj_ms, 1),
+        }
+
     # -- worker ---------------------------------------------------------
     def _run(self):
         try:
@@ -1237,6 +1357,9 @@ class EmotionCamera:
                 time.sleep(0.05)
                 continue
             fail = 0
+            if self._obj_enabled:
+                with self._lock:
+                    self._frame = frame.copy()
             t0 = time.time()
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             box = None
@@ -1260,6 +1383,20 @@ class EmotionCamera:
                                   (x + max(120, w), y), (23, 31, 12), -1)
                     cv2.putText(frame, label, (x + 6, max(14, y - 6)),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (194, 230, 105), 2)
+
+            if self._obj_enabled:
+                with self._lock:
+                    objs = list(self._objects)
+                for o in objs:
+                    ox, oy, ow, oh = o["box"]
+                    cv2.rectangle(frame, (ox, oy), (ox + ow, oy + oh),
+                                  (0, 170, 255), 2)
+                    olabel = "%s %d%%" % (o["label"],
+                                          round(o["confidence"] * 100))
+                    cv2.rectangle(frame, (ox, max(0, oy - 20)),
+                                  (ox + max(90, ow), oy), (20, 30, 40), -1)
+                    cv2.putText(frame, olabel, (ox + 4, max(13, oy - 5)),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 170, 255), 2)
 
             n += 1
             if time.time() - t_fps >= 1.0:
@@ -1296,6 +1433,8 @@ class EmotionCamera:
             self._running = False
             self._jpeg = None
             self._result = self._empty_result()
+            self._frame = None
+            self._objects = []
         try:
             if self._cap:
                 self._cap.release()
@@ -1393,6 +1532,35 @@ def camera_snapshot():
     if jpg is None:
         return jsonify({"error": "no frame"}), 503
     return Response(jpg, mimetype="image/jpeg")
+
+
+@app.route("/objects/latest")
+def objects_latest():
+    """Latest object-detection result.
+
+    Each object carries its pixel ``box``/``center`` plus a normalised
+    ``offset`` (-1..1 from the frame centre) intended to drive the motors for
+    physical tracking. ``primary`` is the highest-confidence object. Shape::
+
+        {
+          "available": true, "enabled": true, "live": true,
+          "frame": [640, 480], "count": 2, "infer_ms": 180.0,
+          "objects": [{"label": "person", "confidence": 0.91,
+                       "box": [x, y, w, h], "center": [cx, cy],
+                       "offset": [nx, ny], "area": 12345}, ...],
+          "primary": { ...same as an object... }
+        }
+    """
+    return jsonify(camera.objects_result())
+
+
+@app.route("/objects/enable", methods=["POST"])
+def objects_enable():
+    """Turn the object-detection thread on or off (``{"on": true|false}``)."""
+    data = request.get_json(silent=True) or {}
+    on = bool(data.get("on", True))
+    enabled = camera.set_objects(on)
+    return jsonify({"enabled": enabled, "available": camera.obj_available})
 
 
 @app.route("/led/on", methods=["POST"])

@@ -579,6 +579,26 @@
   .b-angry   > span { background: linear-gradient(90deg,#f87171,#ef4444); }
   .b-fear    > span { background: linear-gradient(90deg,#a78bfa,#8b5cf6); }
   .cc-hint { color: #5a6178; font-size: 0.72rem; margin-top: 0.6rem; }
+  .cc-obj {
+    margin-top: 0.8rem; border-top: 1px solid #232838; padding-top: 0.7rem;
+  }
+  .cc-obj-btn {
+    cursor: pointer; font-size: 0.78rem; font-weight: 600;
+    color: #ffb066; background: #221a0f; border: 1px solid #4a3a1f;
+    border-radius: 8px; padding: 0.35rem 0.7rem;
+  }
+  .cc-obj-btn.on { color: #0b0f17; background: #ffb066; border-color: #ffb066; }
+  .cc-obj-primary {
+    margin-top: 0.55rem; font-size: 0.78rem; color: #ffd2a6;
+    font-variant-numeric: tabular-nums;
+  }
+  .cc-obj-primary .coords { color: #8a92a6; }
+  .cc-obj-list { margin-top: 0.45rem; display: flex; flex-wrap: wrap; gap: 0.3rem; }
+  .cc-obj-pill {
+    font-size: 0.72rem; color: #cdd3e1; background: #1c2130;
+    border: 1px solid #2a3142; border-radius: 999px; padding: 0.15rem 0.55rem;
+    font-variant-numeric: tabular-nums;
+  }
 </style>
 </head>
 <body>
@@ -677,6 +697,12 @@
         </div>
         <div id="cc-bars"></div>
         <div class="cc-hint" id="cc-hint">On-device YuNet face detection + FER+ emotion model.</div>
+        <div class="cc-obj">
+          <button class="cc-obj-btn" id="cc-obj-toggle" onclick="toggleObjects()">&#127919; Detect objects: OFF</button>
+          <div class="cc-obj-primary" id="cc-obj-primary" style="display:none;"></div>
+          <div class="cc-obj-list" id="cc-obj-list"></div>
+          <div class="cc-hint" id="cc-obj-hint">YOLOv4-tiny &middot; COCO 80 classes &middot; coords feed motor tracking.</div>
+        </div>
       </div>
     </div>
   </div>
@@ -1282,9 +1308,24 @@ ${m.limits ? `
         };
         img.src = '/camera/stream?t=' + Date.now();
         pollEmotion();
-        if (!camTimer) camTimer = setInterval(pollEmotion, 600);
+        if (!camTimer) camTimer = setInterval(function () {
+          pollEmotion();
+          if (objectsOn) pollObjects();
+        }, 600);
       } else {
         if (camTimer) { clearInterval(camTimer); camTimer = null; }
+        if (objectsOn) {                    // release object-detection CPU
+          objectsOn = false;
+          const ob = document.getElementById('cc-obj-toggle');
+          ob.classList.remove('on');
+          ob.innerHTML = '\uD83C\uDFAF Detect objects: OFF';
+          document.getElementById('cc-obj-primary').style.display = 'none';
+          document.getElementById('cc-obj-list').innerHTML = '';
+          fetch('/objects/enable', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ on: false }),
+          }).catch(function () {});
+        }
         img.src = '';                       // release the MJPEG connection -> camera idles
         img.style.display = 'none';
         document.getElementById('cc-placeholder').style.display = '';
@@ -1318,6 +1359,61 @@ ${m.limits ? `
           document.getElementById('cc-label').textContent = d.live ? 'No face' : '\u2014';
           document.getElementById('cc-conf').textContent = d.live ? 'searching\u2026' : 'camera off';
         }
+      } catch (e) { /* offline */ }
+    }
+
+    // ---- object detection ----
+    let objectsOn = false;
+
+    async function toggleObjects() {
+      objectsOn = !objectsOn;
+      const btn = document.getElementById('cc-obj-toggle');
+      btn.classList.toggle('on', objectsOn);
+      btn.innerHTML = '\uD83C\uDFAF Detect objects: ' + (objectsOn ? 'ON' : 'OFF');
+      try {
+        await fetch('/objects/enable', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ on: objectsOn }),
+        });
+      } catch (e) { /* offline */ }
+      if (!objectsOn) {
+        document.getElementById('cc-obj-primary').style.display = 'none';
+        document.getElementById('cc-obj-list').innerHTML = '';
+      } else {
+        pollObjects();
+      }
+    }
+
+    async function pollObjects() {
+      if (!objectsOn) return;
+      try {
+        const r = await fetch('/objects/latest', { cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json();
+        const prim = document.getElementById('cc-obj-primary');
+        if (d.primary) {
+          const p = d.primary;
+          prim.style.display = 'block';
+          prim.innerHTML = '&#127919; <b>' + p.label + '</b> ' +
+            Math.round(p.confidence * 100) + '%  ' +
+            '<span class="coords">center [' + p.center[0] + ',' + p.center[1] + ']' +
+            ' &middot; offset [' + p.offset[0] + ',' + p.offset[1] + ']</span>';
+        } else {
+          prim.style.display = d.enabled ? 'block' : 'none';
+          if (d.enabled) prim.innerHTML = '<span class="coords">no objects in view\u2026</span>';
+        }
+        const list = document.getElementById('cc-obj-list');
+        list.innerHTML = '';
+        (d.objects || []).slice(0, 10).forEach(o => {
+          const pill = document.createElement('span');
+          pill.className = 'cc-obj-pill';
+          pill.textContent = o.label + ' ' + Math.round(o.confidence * 100) + '%';
+          list.appendChild(pill);
+        });
+        const hint = document.getElementById('cc-obj-hint');
+        if (hint) hint.textContent = 'YOLOv4-tiny \u00B7 ' + d.count + ' object(s) \u00B7 ' +
+          (d.infer_ms ? Math.round(d.infer_ms) + ' ms' : 'COCO 80 classes');
       } catch (e) { /* offline */ }
     }
 

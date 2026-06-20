@@ -46,6 +46,11 @@ shaft.
   the main page shows the live feed, dominant-emotion verdict and per-emotion
   bars; the dedicated `/emotion` view shows the same at full size (and falls back
   to a browser simulation when the camera/model is unavailable).
+- **Object detection** — an optional on-device **YOLOv4-tiny** detector (COCO 80
+  classes) runs on its own thread and overlays labelled boxes on the same feed.
+  Each detection reports its pixel box/centre **and a normalised offset from the
+  frame centre (-1..1)** — the coordinate that will later drive the motors so the
+  arm can physically track an object. Toggle it from the Camera card.
 - **Global emergency stop** — a prominent header button plus a sticky floating
   button immediately hard-stop **all** motors and any running playback at once.
 - **Hardware-timed step pulses** — step signals are generated with hardware PWM
@@ -221,6 +226,8 @@ Routes are parameterized by motor id (`<mid>` = `1`–`4`).
 | GET    | `/emotion/latest`         | Latest face/emotion result JSON (`live`, `box`, `scores`, `dominant`, `fps`) |
 | GET    | `/camera/stream`          | Annotated live MJPEG stream (`multipart/x-mixed-replace`) |
 | GET    | `/camera/snapshot`        | Single annotated JPEG frame                 |
+| GET    | `/objects/latest`         | Latest object detections (boxes, centres, normalised offsets, primary) |
+| POST   | `/objects/enable`         | Enable/disable object detection (`{"on": true\|false}`) |
 | GET    | `/system/temp`            | Pi 5 SoC temperature JSON                   |
 | GET    | `/system/health`          | Pi 5 health JSON (CPU, memory, disk, swap, network, fan, power, throttling) |
 
@@ -319,6 +326,12 @@ A USB camera (**Innomaker U20CAM-1080P**, a standard UVC/V4L2 device on
 - **Emotion** — Microsoft **FER+** (`emotion-ferplus-8.onnx`) run through
   `cv2.dnn` (no extra runtime needed). The 8 FER+ classes are mapped onto the six
   shown emotions (happy, neutral, surprise, sad, angry, fear).
+- **Object detection** — optional **YOLOv4-tiny** (`yolov4-tiny.weights` + `.cfg`,
+  COCO 80 classes) via `cv2.dnn.DetectionModel`, on a separate thread so it does
+  not slow the emotion/stream loop. Returns, per object, the pixel box and centre
+  plus a normalised `offset` (`-1..1`) from the frame centre — the value to feed a
+  pan/tilt (motor) controller for physical tracking. `primary` is the
+  highest-confidence object.
 
 A single background thread grabs frames, detects the largest face, classifies its
 emotion, draws the box + label, and publishes the latest annotated JPEG plus a
@@ -336,12 +349,13 @@ OpenCV and the model files are not part of the repo. Install and download them w
 
 ```bash
 # from the project root, with the Pi reachable over SSH
-scripts/setup_vision.sh        # run on the Pi (installs python3-opencv + models)
+scripts/setup_vision.sh        # run on the Pi (installs python3-opencv + face/emotion models)
+scripts/setup_objects.sh       # run on the Pi (downloads the YOLOv4-tiny object model)
 ```
 
-This installs the `python3-opencv` apt package and downloads the YuNet and FER+
-ONNX models into `led_app/models/` (git-ignored). Set `MIRO_CAMERA_DEVICE` to
-override the default `/dev/video0`.
+This installs the `python3-opencv` apt package and downloads the YuNet, FER+ and
+YOLOv4-tiny models into `led_app/models/` (git-ignored). Set `MIRO_CAMERA_DEVICE`
+to override the default `/dev/video0`.
 
 ## Project structure
 
