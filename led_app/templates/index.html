@@ -701,6 +701,10 @@
           <button class="cc-obj-btn on" id="cc-emo-toggle" onclick="toggleEmotion()">&#128513; Emotion: ON</button>
         </div>
         <div class="cc-obj">
+          <button class="cc-obj-btn" id="cc-rings-test" onclick="testRings()">&#128161; Test LED rings</button>
+          <div class="cc-hint" id="cc-rings-hint">WS2812 rings on SPI (GPIO10). Runs an R/G/B sweep.</div>
+        </div>
+        <div class="cc-obj">
           <button class="cc-obj-btn" id="cc-obj-toggle" onclick="toggleObjects()">&#127919; Detect objects: OFF</button>
           <div class="cc-obj-primary" id="cc-obj-primary" style="display:none;"></div>
           <div class="cc-obj-list" id="cc-obj-list"></div>
@@ -1410,6 +1414,26 @@ ${m.limits ? `
 
     // ---- object detection ----
     let objectsOn = false;
+
+    async function testRings() {
+      const btn = document.getElementById('cc-rings-test');
+      const orig = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '\uD83D\uDCA1 Testing\u2026';
+      try {
+        const r = await fetch('/emotion/rings/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seconds: 4 }),
+        });
+        const d = await r.json();
+        if (!d.available) btn.innerHTML = '\u26A0\uFE0F Rings unavailable';
+      } catch (e) { /* offline */ }
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.innerHTML = orig;
+      }, 4200);
+    }
 
     async function toggleObjects() {
       objectsOn = !objectsOn;

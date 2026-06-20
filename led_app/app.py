@@ -1562,6 +1562,8 @@ class EmotionRings:
         self._running = False
         self._thread = None
         self._step = 0
+        self._test_until = 0.0
+        self._test_step = 0
         self._last_emotion = "neutral"
         self._last_seen_ts = 0.0
         self._rng_state = 0xC0FFEE
@@ -1840,6 +1842,35 @@ class EmotionRings:
             self._blackout()
         return self._enabled
 
+    def start_test(self, seconds=4.0):
+        """Run a self-test color sweep for a few seconds, then resume emotions."""
+        if not self.available:
+            return False
+        self._test_until = time.monotonic() + max(0.5, float(seconds))
+        self._test_step = 0
+        return True
+
+    def _render_test(self, step):
+        """Diagnostic pattern: solid R, G, B, white, then a single chasing dot."""
+        phase = (step // 12) % 5
+        if phase == 0:
+            solid = (255, 0, 0)
+        elif phase == 1:
+            solid = (0, 255, 0)
+        elif phase == 2:
+            solid = (0, 0, 255)
+        elif phase == 3:
+            solid = (255, 255, 255)
+        else:
+            solid = None
+        if solid is not None:
+            colors = [solid] * RING_LED_COUNT
+        else:
+            dot = step % RING_LED_COUNT
+            colors = [(0, 0, 0)] * RING_LED_COUNT
+            colors[dot] = (255, 160, 0)
+        return colors, colors
+
     def status(self):
         data_pin = 10 if self.backend == "spi" else 18
         return {
@@ -1856,6 +1887,12 @@ class EmotionRings:
     def _run(self):
         while self._running:
             try:
+                if time.monotonic() < self._test_until:
+                    ring1, ring2 = self._render_test(self._test_step)
+                    self._apply(ring1, ring2)
+                    self._test_step += 1
+                    time.sleep(self.UPDATE_DT)
+                    continue
                 if not self._enabled:
                     time.sleep(0.2)
                     continue
@@ -1967,6 +2004,15 @@ def emotion_rings():
         st["enabled"] = enabled
         return jsonify(st)
     return jsonify(rings.status())
+
+
+@app.route("/emotion/rings/test", methods=["POST"])
+def emotion_rings_test():
+    """Fire a short color self-test sweep on the rings."""
+    data = request.get_json(silent=True) or {}
+    seconds = float(data.get("seconds", 4.0))
+    started = rings.start_test(seconds)
+    return jsonify({"started": started, "available": rings.available})
 
 
 @app.route("/objects/enable", methods=["POST"])
