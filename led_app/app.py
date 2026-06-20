@@ -1108,9 +1108,8 @@ _FERPLUS_TO_UI = {
 }
 UI_EMOTIONS = ["happy", "neutral", "surprise", "sad", "angry", "fear"]
 
-# Addressable LED rings (2 x WS2812B, 8 LEDs each).
-RING1_PIN = 23
-RING2_PIN = 24
+# Addressable LED rings (2 x WS2812B, 8 LEDs each) sharing one data line.
+RING_PIN = 18
 RING_LED_COUNT = 8
 RING_BRIGHTNESS = 80
 
@@ -1517,7 +1516,11 @@ camera = EmotionCamera()
 
 
 class EmotionRings:
-    """Animate two WS2812 rings according to detected emotion."""
+    """Animate WS2812 rings according to detected emotion.
+
+    Current wiring: both 8-LED rings share one data line on GPIO18, so they
+    display the same animation in parallel.
+    """
 
     UPDATE_DT = 0.06
     HOLD_LAST_S = 1.8
@@ -1526,8 +1529,7 @@ class EmotionRings:
         self.camera = camera
         self.available = WS281X_AVAILABLE
         self.error = None
-        self._ring1 = None
-        self._ring2 = None
+        self._strip = None
         self._enabled = True
         self._running = False
         self._thread = None
@@ -1539,35 +1541,22 @@ class EmotionRings:
             self.error = "rpi_ws281x module not available"
             return
         try:
-            # Two independent outputs (one ring per GPIO pin).
-            # The ws281x backend exposes two hardware channels; using distinct
-            # channels avoids bus contention between the two rings.
-            self._ring1 = PixelStrip(
+            # Shared output: both rings are connected to GPIO18.
+            self._strip = PixelStrip(
                 RING_LED_COUNT,
-                RING1_PIN,
+                RING_PIN,
                 800000,
                 10,
                 False,
                 RING_BRIGHTNESS,
                 0,
             )
-            self._ring2 = PixelStrip(
-                RING_LED_COUNT,
-                RING2_PIN,
-                800000,
-                11,
-                False,
-                RING_BRIGHTNESS,
-                1,
-            )
-            self._ring1.begin()
-            self._ring2.begin()
+            self._strip.begin()
             self._blackout()
         except Exception as e:
             self.available = False
             self.error = "init failed: %r" % (e,)
-            self._ring1 = None
-            self._ring2 = None
+            self._strip = None
 
     @staticmethod
     def _clamp_u8(v):
@@ -1598,15 +1587,12 @@ class EmotionRings:
         return self._rng_state & 0xFF
 
     def _apply(self, ring1_colors, ring2_colors):
-        if not self.available or not self._ring1 or not self._ring2:
+        if not self.available or not self._strip:
             return
         for i in range(RING_LED_COUNT):
             c1 = ring1_colors[i]
-            c2 = ring2_colors[i]
-            self._ring1.setPixelColor(i, Color(c1[0], c1[1], c1[2]))
-            self._ring2.setPixelColor(i, Color(c2[0], c2[1], c2[2]))
-        self._ring1.show()
-        self._ring2.show()
+            self._strip.setPixelColor(i, Color(c1[0], c1[1], c1[2]))
+        self._strip.show()
 
     def _blackout(self):
         off = [(0, 0, 0)] * RING_LED_COUNT
@@ -1714,7 +1700,7 @@ class EmotionRings:
             "available": self.available,
             "enabled": self._enabled,
             "running": self._running,
-            "pins": [RING1_PIN, RING2_PIN],
+            "pins": [RING_PIN],
             "count": RING_LED_COUNT,
             "emotion": self._last_emotion,
             "error": self.error,
