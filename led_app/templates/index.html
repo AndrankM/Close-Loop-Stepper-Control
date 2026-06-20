@@ -812,6 +812,9 @@
       { id: 5, name: 'Axis 5', pin: 12 },
       { id: 6, name: 'Axis 6', pin: 13 },
     ];
+    const SERVO_MIN = -135;
+    const SERVO_MAX = 135;
+    const servoSendState = {};
 
     function servoHTML(s) {
       const i = s.id;
@@ -820,7 +823,7 @@
         <div class="card-title">${s.name} <small>GPIO${s.pin}</small></div>
         <div class="servo-slider">
           <label for="servo-${i}">Angle</label>
-          <input type="range" id="servo-${i}" min="-90" max="90" value="0" step="1"
+          <input type="range" id="servo-${i}" min="${SERVO_MIN}" max="${SERVO_MAX}" value="0" step="1"
                  oninput="setServoAngle(${i}, this.value)">
           <span class="servo-angle" id="servo-${i}-val">0°</span>
         </div>
@@ -828,17 +831,28 @@
       `;
     }
 
-    async function setServoAngle(sid, angle) {
-      angle = Math.max(-90, Math.min(90, parseFloat(angle)));
+    function queueServoSend(sid) {
+      const st = servoSendState[sid];
+      if (!st || st.inflight) return;
+      st.inflight = true;
+      const angle = st.pending;
+      fetch(`/servo/${sid}/angle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ angle }),
+      }).catch(() => {}).finally(() => {
+        st.inflight = false;
+        // If slider moved while this request was in-flight, send the latest now.
+        if (st.pending !== angle) queueServoSend(sid);
+      });
+    }
+
+    function setServoAngle(sid, angle) {
+      angle = Math.max(SERVO_MIN, Math.min(SERVO_MAX, parseFloat(angle)));
       document.getElementById(`servo-${sid}-val`).textContent = angle.toFixed(0) + '°';
-      try {
-        const r = await fetch(`/servo/${sid}/angle`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ angle }),
-        });
-        if (!r.ok) console.error(`servo ${sid} error`);
-      } catch (e) { /* offline */ }
+      if (!servoSendState[sid]) servoSendState[sid] = { inflight: false, pending: angle };
+      servoSendState[sid].pending = angle;
+      queueServoSend(sid);
     }
 
     async function initServos() {
@@ -850,7 +864,7 @@
           fetch(`/servo/${s.id}/angle`).then(r => r.json()).then(d => {
             const input = document.getElementById(`servo-${s.id}`);
             const val = document.getElementById(`servo-${s.id}-val`);
-            if (input && d.angle) {
+            if (input && Number.isFinite(d.angle)) {
               input.value = d.angle;
               val.textContent = d.angle.toFixed(0) + '°';
             }

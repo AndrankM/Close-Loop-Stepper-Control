@@ -10,14 +10,19 @@ import subprocess
 from flask import Flask, jsonify, render_template, request, Response
 
 try:
-    from gpiozero import DigitalOutputDevice, PWMOutputDevice, DigitalInputDevice, Servo
+    from gpiozero import (
+        DigitalOutputDevice,
+        PWMOutputDevice,
+        DigitalInputDevice,
+        AngularServo,
+    )
 
     GPIO_AVAILABLE = True
 except Exception:  # gpiozero not installed / not running on a Pi
     DigitalOutputDevice = None
     PWMOutputDevice = None
     DigitalInputDevice = None
-    Servo = None
+    AngularServo = None
     GPIO_AVAILABLE = False
 
 try:
@@ -399,6 +404,12 @@ M4_LIMIT_PIN = 19
 # GPIO 12/13 are hardware PWM (PWM0 ch0/ch1) on the Pi 5.
 SERVO5_PIN = 12  # physical pin 32
 SERVO6_PIN = 13  # physical pin 33
+SERVO_MIN_ANGLE = -135
+SERVO_MAX_ANGLE = 135
+# DX-227 (270deg) generally accepts a wider pulse span than hobby 180deg servos.
+SERVO_MIN_PULSE = 0.0005
+SERVO_MAX_PULSE = 0.0025
+SERVO_FRAME_WIDTH = 0.02
 
 # Driver enable pin is active-LOW: drive LOW to energize the coils.
 EN_ACTIVE_LOW = True
@@ -744,13 +755,31 @@ motors = {
     ),
 }
 
-# Standard RC servo motors on hardware PWM. Angle range -90 to 90 degrees (standard
-# servo travel; 0 = center, ±90 = extreme CW/CCW).
+# Standard RC servos for axis 5 & 6 using calibrated 270deg settings.
 servos = {}
-if GPIO_AVAILABLE and Servo is not None:
+servo_angles = {}
+if GPIO_AVAILABLE and AngularServo is not None:
     try:
-        servos[5] = Servo(SERVO5_PIN)
-        servos[6] = Servo(SERVO6_PIN)
+        servos[5] = AngularServo(
+            SERVO5_PIN,
+            min_angle=SERVO_MIN_ANGLE,
+            max_angle=SERVO_MAX_ANGLE,
+            min_pulse_width=SERVO_MIN_PULSE,
+            max_pulse_width=SERVO_MAX_PULSE,
+            frame_width=SERVO_FRAME_WIDTH,
+            initial_angle=0.0,
+        )
+        servos[6] = AngularServo(
+            SERVO6_PIN,
+            min_angle=SERVO_MIN_ANGLE,
+            max_angle=SERVO_MAX_ANGLE,
+            min_pulse_width=SERVO_MIN_PULSE,
+            max_pulse_width=SERVO_MAX_PULSE,
+            frame_width=SERVO_FRAME_WIDTH,
+            initial_angle=0.0,
+        )
+        servo_angles[5] = 0.0
+        servo_angles[6] = 0.0
     except Exception:
         pass  # Servo pins unavailable.
 
@@ -2220,17 +2249,24 @@ def motor_encoder(mid):
 # -- Servo motors (axis 5 & 6) -------------------------------------------------
 @app.route("/servo/<int:sid>/angle", methods=["GET", "POST"])
 def servo_angle(sid):
-    """Get or set a servo's angle (-90 to 90 degrees)."""
+    """Get or set a servo's angle for 270deg servos (-135 to 135 degrees)."""
     if sid not in servos:
         return jsonify({"error": f"servo {sid} not available"}), 404
     servo = servos[sid]
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
         angle = float(data.get("angle", 0))
-        angle = max(-90, min(90, angle))
-        servo.value = angle / 90.0
+        angle = max(SERVO_MIN_ANGLE, min(SERVO_MAX_ANGLE, angle))
+        prev = servo_angles.get(sid)
+        # Ignore tiny request jitter from UI/network noise.
+        if prev is None or abs(prev - angle) >= 0.5:
+            servo.angle = angle
+            servo_angles[sid] = angle
         return jsonify({"servo": sid, "angle": angle})
-    return jsonify({"servo": sid, "angle": servo.value * 90.0})
+    angle = servo_angles.get(sid)
+    if angle is None and getattr(servo, "angle", None) is not None:
+        angle = float(servo.angle)
+    return jsonify({"servo": sid, "angle": angle if angle is not None else 0.0})
 
 
 @app.route("/servo/status")
@@ -2238,9 +2274,12 @@ def servo_status():
     """Return status of all servos."""
     status = {}
     for sid, servo in servos.items():
+        angle = servo_angles.get(sid)
+        if angle is None and getattr(servo, "angle", None) is not None:
+            angle = float(servo.angle)
         status[sid] = {
             "available": True,
-            "angle": servo.value * 90.0,
+            "angle": angle if angle is not None else 0.0,
             "pin": [SERVO5_PIN if sid == 5 else SERVO6_PIN],
         }
     return jsonify(status)
