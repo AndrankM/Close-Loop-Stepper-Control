@@ -664,7 +664,7 @@
   .twin-cmd-hint { font-size: 0.74rem; color: #8a93a8; margin-bottom: 0.7rem; }
   .twin-cmd-hint b { color: #ffb347; }
   .twin-cmd-sliders { display: grid; gap: 0.5rem; }
-  .twin-jrow { display: grid; grid-template-columns: 76px 1fr 60px; align-items: center; gap: 0.6rem; font-size: 0.78rem; color: #aeb6c8; }
+  .twin-jrow { display: grid; grid-template-columns: 118px 1fr 60px; align-items: center; gap: 0.6rem; font-size: 0.78rem; color: #aeb6c8; }
   .twin-jrow input[type="range"] { width: 100%; accent-color: #ffb066; }
   .twin-jrow .v { text-align: right; color: #ffd2a6; font-variant-numeric: tabular-nums; }
   .twin-cmd-actions { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; margin-top: 0.9rem; }
@@ -673,8 +673,22 @@
   .twin-arm { font-size: 0.8rem; color: #ffb347; display: flex; align-items: center; gap: 0.3rem; cursor: pointer; }
   .twin-limits { margin-top: 0.9rem; font-size: 0.76rem; color: #8a93a8; }
   .twin-limits summary { cursor: pointer; color: #7dd3fc; margin-bottom: 0.5rem; }
-  .twin-lrow { display: grid; grid-template-columns: 76px 1fr 1fr; gap: 0.5rem; align-items: center; margin: 0.4rem 0; }
+  .twin-lrow { display: grid; grid-template-columns: 118px 1fr 1fr; gap: 0.5rem; align-items: center; margin: 0.4rem 0; }
   .twin-lrow input { width: 100%; background: #0e1116; border: 1px solid #2a3142; color: #d9dee8; border-radius: 6px; padding: 0.25rem 0.4rem; font-variant-numeric: tabular-nums; }
+
+  /* Tabbed navigation */
+  .tabnav { position: sticky; top: 0; z-index: 50; display: flex; gap: 0.4rem; flex-wrap: wrap;
+    justify-content: center; padding: 0.5rem; margin: 0 auto 1.2rem; max-width: 1720px;
+    background: rgba(13,19,32,0.85); backdrop-filter: blur(6px);
+    border: 1px solid #1f2937; border-radius: 12px; }
+  .tabnav button { background: #131a26; color: #aeb6c8; border: 1px solid #232c3c; border-radius: 9px;
+    padding: 0.5rem 1rem; font-size: 0.85rem; cursor: pointer; display: inline-flex; align-items: center;
+    gap: 0.4rem; transition: background .15s, color .15s, border-color .15s; }
+  .tabnav button:hover { background: #1b2433; color: #e5e7eb; }
+  .tabnav button.active { background: #0e7490; border-color: #0e7490; color: #fff; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; animation: tabfade .18s ease; }
+  @keyframes tabfade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 </style>
 </head>
 <body>
@@ -684,11 +698,20 @@
     <button class="btn-estop-all" id="estop-all" onclick="estopAll()">&#9888; STOP ALL MOTORS</button>
     <div style="margin-top:0.6rem; display:flex; gap:0.5rem; justify-content:center; align-items:center; flex-wrap:wrap;">
       <a href="/emotion" style="color:#7dd3fc;font-size:0.8rem;text-decoration:none;border:1px solid #2a3650;border-radius:8px;padding:0.3rem 0.7rem;display:inline-block;">&#128247; Emotion detection</a>
-      <span class="cam-chip" id="cam-chip" onclick="toggleCamera()" title="Show the head camera with live emotion detection">&#128247; Camera</span>
-      <span class="cpu-temp" id="cpu-temp" onclick="toggleHealth()" title="Click for Pi 5 health details">&#127777; Pi <span id="cpu-temp-val">--</span>&deg;C</span>
+      <span class="cam-chip" id="cam-chip" onclick="showTab('vision')" title="Open the camera + vision panel">&#128247; Camera</span>
+      <span class="cpu-temp" id="cpu-temp" onclick="showTab('system')" title="Open the Pi 5 system panel">&#127777; Pi <span id="cpu-temp-val">--</span>&deg;C</span>
     </div>
   </div>
 
+  <nav class="tabnav" id="tabnav">
+    <button data-tab="control" onclick="showTab('control')">&#127968; Control</button>
+    <button data-tab="twin" onclick="showTab('twin')">&#129302; Digital Twin</button>
+    <button data-tab="teach" onclick="showTab('teach')">&#127919; Teach &amp; Play</button>
+    <button data-tab="vision" onclick="showTab('vision')">&#128247; Vision</button>
+    <button data-tab="system" onclick="showTab('system')">&#128202; System</button>
+  </nav>
+
+  <section class="tab-panel" data-tab="system">
   <div class="health-card hidden" id="health-card">
     <div class="hc-title">&#128202; Raspberry Pi 5 health <span id="hc-updated" style="margin-left:auto;font-weight:400;color:#5a6178;font-size:0.72rem;"></span></div>
     <div class="health-grid" id="health-grid">
@@ -749,9 +772,11 @@
       </div>
     </div>
   </div>
+  </section>
 
   <button class="btn-estop-all estop-float" onclick="estopAll()" title="Emergency stop all motors">&#9888; STOP ALL</button>
 
+  <section class="tab-panel" data-tab="vision">
   <div class="cam-card hidden" id="camera-card">
     <div class="cc-title"><span class="cc-dot"></span> Head camera &middot; emotion detection
       <a href="/emotion" style="margin-left:auto;color:#7dd3fc;font-size:0.75rem;text-decoration:none;">full view &rarr;</a>
@@ -799,7 +824,9 @@
       </div>
     </div>
   </div>
+  </section>
 
+  <section class="tab-panel" data-tab="twin">
   <div class="teach twin-card">
     <div class="card-title">3D Digital Twin</div>
     <div class="twin-toolbar">
@@ -838,7 +865,9 @@
       Switch to <b>Command</b> to pose the model and drive the real arm (steppers + tilt + gripper).
       Press <b>Set home</b> with the arm at its zero pose to align the model.</div>
   </div>
+  </section>
 
+  <section class="tab-panel active" data-tab="control">
   <div class="units" id="units"></div>
 
   <div class="teach servo-card">
@@ -847,7 +876,9 @@
       <!-- Populated by JS -->
     </div>
   </div>
+  </section>
 
+  <section class="tab-panel" data-tab="teach">
   <div class="teach">
     <div class="card-title">Teach &amp; Playback</div>
 
@@ -889,16 +920,41 @@
     </table>
     <div class="wp-empty" id="t-empty">No waypoints recorded yet. Use free-drive or the motor controls to position the arm, then Record.</div>
   </div>
+  </section>
 
   <p class="footer">AndPI5 &middot; 192.168.0.101:5000</p>
 
   <script>
+    // Tabbed navigation: show one section at a time, persist the choice,
+    // and start/stop the camera + health pollers as their tabs open/close.
+    function showTab(name) {
+      document.querySelectorAll('.tab-panel').forEach(p =>
+        p.classList.toggle('active', p.dataset.tab === name));
+      document.querySelectorAll('.tabnav button').forEach(b =>
+        b.classList.toggle('active', b.dataset.tab === name));
+      if (typeof camVisible !== 'undefined') {
+        if (name === 'vision' && !camVisible) toggleCamera();
+        else if (name !== 'vision' && camVisible) toggleCamera();
+      }
+      if (typeof healthVisible !== 'undefined') {
+        if (name === 'system' && !healthVisible) toggleHealth();
+        else if (name !== 'system' && healthVisible) toggleHealth();
+      }
+      try { localStorage.setItem('active_tab_v1', name); } catch (e) {}
+    }
+    window.addEventListener('DOMContentLoaded', () => {
+      let t = 'control';
+      try { t = localStorage.getItem('active_tab_v1') || 'control'; } catch (e) {}
+      if (!document.querySelector(`.tab-panel[data-tab="${t}"]`)) t = 'control';
+      showTab(t);
+    });
+
     // Motor definitions: id, friendly name, wiring note, and gear reduction.
     const MOTORS = [
-      { id: 1, name: 'Motor 1', gear: 5, wiring: 'EN GPIO17 · STP GPIO27 · DIR GPIO22 · addr 0xE0 · 5:1 planetary' },
-      { id: 2, name: 'Motor 2', gear: 5, wiring: 'EN GPIO2 · STP GPIO3 · DIR GPIO4 · addr 0xE1 · 5:1 planetary' },
-      { id: 3, name: 'Motor 3', gear: 1, limits: true, wiring: 'EN GPIO23 · STP GPIO24 · DIR GPIO25 · addr 0xE2 · direct drive · end-stop GPIO26 (shared)' },
-      { id: 4, name: 'Motor 4', gear: 1, limits: true, wiring: 'EN GPIO16 · STP GPIO20 · DIR GPIO21 · addr 0xE3 · direct drive · end-stop GPIO19 (shared)' },
+      { id: 1, name: 'Axis 1 · Stepper', gear: 5, wiring: 'EN GPIO17 · STP GPIO27 · DIR GPIO22 · addr 0xE0 · 5:1 planetary' },
+      { id: 2, name: 'Axis 2 · Stepper', gear: 5, wiring: 'EN GPIO2 · STP GPIO3 · DIR GPIO4 · addr 0xE1 · 5:1 planetary' },
+      { id: 3, name: 'Axis 3 · Stepper (Pan)', gear: 1, limits: true, wiring: 'EN GPIO23 · STP GPIO24 · DIR GPIO25 · addr 0xE2 · direct drive · end-stop GPIO26 (shared)' },
+      { id: 4, name: 'Axis 4 · Stepper', gear: 1, limits: true, wiring: 'EN GPIO16 · STP GPIO20 · DIR GPIO21 · addr 0xE3 · direct drive · end-stop GPIO19 (shared)' },
     ];
 
     const SERVOS = [
@@ -2455,6 +2511,16 @@ ${m.limits ? `
     let renderer, scene, camera, controls, robot = null;
     let raf = 0, pollTimer = 0, moveTimer = 0;
     let commandable = [];               // ['joint1', ...] joints that drive hardware
+    // Map URDF joint names to physical axis labels (base/Axis 1 is fixed, so
+    // twin joint1 == Axis 2, etc.). Keeps the UI consistent with the rest.
+    const TWIN_JOINT_LABELS = {
+      joint1: 'Axis 2 · Motor',
+      joint2: 'Axis 3 · Pan',
+      joint3: 'Axis 4 · Motor',
+      joint4: 'Axis 5 · Tilt',
+      joint5: 'Axis 6 · Gripper',
+    };
+    const twinLabel = (name) => TWIN_JOINT_LABELS[name] || name;
     let limits = {};                   // joint -> [loRad, hiRad]
     const targetAngles = {};   // joint -> desired radians (from /joint_states)
     const curAngles = {};      // joint -> smoothed radians applied to model
@@ -2635,7 +2701,7 @@ ${m.limits ? `
         const row = document.createElement('label');
         row.className = 'twin-jrow';
         row.innerHTML =
-          `<span>${name}</span>` +
+          `<span>${twinLabel(name)}</span>` +
           `<input type="range" min="${loDeg}" max="${hiDeg}" step="1" value="${Math.round(cur)}" data-j="${name}">` +
           `<span class="v" id="twin-v-${name}">${Math.round(cur)}&deg;</span>`;
         const slider = row.querySelector('input');
@@ -2649,7 +2715,7 @@ ${m.limits ? `
         const lrow = document.createElement('div');
         lrow.className = 'twin-lrow';
         lrow.innerHTML =
-          `<span>${name}</span>` +
+          `<span>${twinLabel(name)}</span>` +
           `<input type="number" step="1" value="${loDeg}" data-lim="${name}" data-edge="lo" placeholder="min°">` +
           `<input type="number" step="1" value="${hiDeg}" data-lim="${name}" data-edge="hi" placeholder="max°">`;
         limitRowsEl.appendChild(lrow);
