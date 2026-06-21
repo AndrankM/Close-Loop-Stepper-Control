@@ -1,0 +1,1 @@
+put -o "d:\Git CLones\PI SSH Test\jog_test.sh" /tmp/jog_test.sh

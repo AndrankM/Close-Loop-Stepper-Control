@@ -640,17 +640,41 @@
     border-radius: 8px; padding: 0.35rem 0.7rem;
   }
   .cc-obj-btn.on { color: #0b0f17; background: #ffb066; border-color: #ffb066; }
-  .cc-obj-primary {
-    margin-top: 0.55rem; font-size: 0.78rem; color: #ffd2a6;
-    font-variant-numeric: tabular-nums;
+  .cc-track-speed { margin-top: 0.6rem; display: none; flex-direction: column; gap: 0.4rem; }
+  .cc-track-speed.show { display: flex; }
+  .cc-track-row {
+    display: grid; grid-template-columns: 4.4rem 1fr 2.6rem; align-items: center;
+    gap: 0.5rem; font-size: 0.72rem; color: #9aa2b6;
   }
-  .cc-obj-primary .coords { color: #8a92a6; }
-  .cc-obj-list { margin-top: 0.45rem; display: flex; flex-wrap: wrap; gap: 0.3rem; }
-  .cc-obj-pill {
-    font-size: 0.72rem; color: #cdd3e1; background: #1c2130;
-    border: 1px solid #2a3142; border-radius: 999px; padding: 0.15rem 0.55rem;
-    font-variant-numeric: tabular-nums;
-  }
+  .cc-track-row input[type="range"] { width: 100%; accent-color: #ffb066; }
+  .cc-track-val { text-align: right; color: #ffd2a6; font-variant-numeric: tabular-nums; }
+
+  .twin-toolbar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
+  .twin-status { font-size: 0.78rem; color: #6f7891; font-variant-numeric: tabular-nums; }
+  .twin-status.live { color: #6fdc8c; }
+  .twin-status.err { color: #ff8e8e; }
+  .twin-stage { position: relative; width: 100%; height: 440px; background: #0e1116;
+    border: 1px solid #2a3142; border-radius: 12px; overflow: hidden; }
+  .twin-stage canvas { display: block; }
+  .twin-note { margin-top: 0.6rem; font-size: 0.72rem; color: #6f7891; }
+  .twin-note b { color: #ffb347; }
+  .twin-modes { display: inline-flex; gap: 0.3rem; }
+  .twin-modes .btn-t.active { background: #1c2740; border-color: #3a5a86; color: #9fd0ff; }
+  .twin-cmd { margin-top: 0.9rem; }
+  .twin-cmd-hint { font-size: 0.74rem; color: #8a93a8; margin-bottom: 0.7rem; }
+  .twin-cmd-hint b { color: #ffb347; }
+  .twin-cmd-sliders { display: grid; gap: 0.5rem; }
+  .twin-jrow { display: grid; grid-template-columns: 76px 1fr 60px; align-items: center; gap: 0.6rem; font-size: 0.78rem; color: #aeb6c8; }
+  .twin-jrow input[type="range"] { width: 100%; accent-color: #ffb066; }
+  .twin-jrow .v { text-align: right; color: #ffd2a6; font-variant-numeric: tabular-nums; }
+  .twin-cmd-actions { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; margin-top: 0.9rem; }
+  .twin-cmd-speed { font-size: 0.78rem; color: #aeb6c8; display: flex; align-items: center; gap: 0.4rem; }
+  .twin-cmd-speed input { width: 110px; accent-color: #ffb066; }
+  .twin-arm { font-size: 0.8rem; color: #ffb347; display: flex; align-items: center; gap: 0.3rem; cursor: pointer; }
+  .twin-limits { margin-top: 0.9rem; font-size: 0.76rem; color: #8a93a8; }
+  .twin-limits summary { cursor: pointer; color: #7dd3fc; margin-bottom: 0.5rem; }
+  .twin-lrow { display: grid; grid-template-columns: 76px 1fr 1fr; gap: 0.5rem; align-items: center; margin: 0.4rem 0; }
+  .twin-lrow input { width: 100%; background: #0e1116; border: 1px solid #2a3142; color: #d9dee8; border-radius: 6px; padding: 0.25rem 0.4rem; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -753,17 +777,66 @@
           <button class="cc-obj-btn on" id="cc-emo-toggle" onclick="toggleEmotion()">&#128513; Emotion: ON</button>
         </div>
         <div class="cc-obj">
+          <button class="cc-obj-btn" id="cc-face-track-toggle" onclick="toggleFaceTracking()">&#128100; Face tracking: OFF</button>
+          <div class="cc-hint" id="cc-face-track-hint">Tracks face using Motor 3 (pan) + Axis 5 (tilt).</div>
+          <div class="cc-track-speed" id="cc-track-speed">
+            <label class="cc-track-row">
+              <span>Pan speed</span>
+              <input type="range" id="cc-track-pan-speed" min="0.25" max="2.5" step="0.05" value="1">
+              <span class="cc-track-val" id="cc-track-pan-val">1.0&times;</span>
+            </label>
+            <label class="cc-track-row">
+              <span>Tilt speed</span>
+              <input type="range" id="cc-track-tilt-speed" min="0.25" max="2.5" step="0.05" value="1">
+              <span class="cc-track-val" id="cc-track-tilt-val">1.0&times;</span>
+            </label>
+          </div>
+        </div>
+        <div class="cc-obj">
           <button class="cc-obj-btn" id="cc-rings-test" onclick="testRings()">&#128161; Test LED rings</button>
           <div class="cc-hint" id="cc-rings-hint">WS2812 rings on SPI (GPIO10). Runs an R/G/B sweep.</div>
         </div>
-        <div class="cc-obj">
-          <button class="cc-obj-btn" id="cc-obj-toggle" onclick="toggleObjects()">&#127919; Detect objects: OFF</button>
-          <div class="cc-obj-primary" id="cc-obj-primary" style="display:none;"></div>
-          <div class="cc-obj-list" id="cc-obj-list"></div>
-          <div class="cc-hint" id="cc-obj-hint">YOLOv4-tiny &middot; COCO 80 classes &middot; coords feed motor tracking.</div>
-        </div>
       </div>
     </div>
+  </div>
+
+  <div class="teach twin-card">
+    <div class="card-title">3D Digital Twin</div>
+    <div class="twin-toolbar">
+      <button class="btn-t primary" id="twin-toggle">Show twin</button>
+      <button class="btn-t" id="twin-zero" disabled>Set home (zero)</button>
+      <span class="twin-modes" id="twin-modes" style="display:none;">
+        <button class="btn-t active" id="twin-mode-mirror">Mirror</button>
+        <button class="btn-t" id="twin-mode-command">Command</button>
+      </span>
+      <span class="twin-status" id="twin-status">off</span>
+    </div>
+    <div class="twin-stage" id="twin-stage" style="display:none;">
+      <div id="twin-canvas"></div>
+    </div>
+    <div class="twin-cmd" id="twin-cmd" style="display:none;">
+      <div class="twin-cmd-hint">Drag the joints to pose the model, then press <b>Move robot</b>.
+        Set <b>home</b> first with the real arm at its zero pose.</div>
+      <div class="twin-cmd-sliders" id="twin-cmd-sliders"></div>
+      <div class="twin-cmd-actions">
+        <label class="twin-cmd-speed">Speed
+          <input type="range" id="twin-speed" min="0.1" max="1" step="0.05" value="0.4">
+          <span id="twin-speed-val">0.40&times;</span>
+        </label>
+        <label class="twin-arm" title="Safety: enable to allow sending the move"><input type="checkbox" id="twin-arm"> Arm</label>
+        <button class="btn-t primary" id="twin-send" disabled>&#9654; Move robot to pose</button>
+        <button class="btn-t danger" id="twin-stop-move">&#9632; STOP</button>
+        <span class="twin-status" id="twin-move-status">idle</span>
+      </div>
+      <details class="twin-limits">
+        <summary>Joint limits (degrees)</summary>
+        <div id="twin-limits-rows"></div>
+        <button class="btn-t" id="twin-limits-apply">Apply limits</button>
+      </details>
+    </div>
+    <div class="twin-note">Live mirror of the arm from the encoders (joints 1–3) and servos (joints 4–5).
+      Switch to <b>Command</b> to pose the model and drive the real arm (steppers + tilt + gripper).
+      Press <b>Set home</b> with the arm at its zero pose to align the model.</div>
   </div>
 
   <div class="units" id="units"></div>
@@ -834,20 +907,243 @@
     ];
     const SERVO_MIN = -135;
     const SERVO_MAX = 135;
+    const AXIS5_SERVO_ID = 5;
+    const AXIS5_LIMITS_KEY = 'axis5_limits_v1';
+    const AXIS5_DEFAULT_MIN = SERVO_MIN;
+    const AXIS5_DEFAULT_MAX = SERVO_MAX;
+    let axis5MinAngle = AXIS5_DEFAULT_MIN;
+    let axis5MaxAngle = AXIS5_DEFAULT_MAX;
+    const GRIPPER_SERVO_ID = 6;
+    const GRIPPER_LIMITS_KEY = 'gripper_limits_v1';
+    const GRIPPER_DEFAULT_OPEN_ANGLE = 25;
+    const GRIPPER_DEFAULT_CLOSED_ANGLE = 100;
+    let gripperOpenAngle = GRIPPER_DEFAULT_OPEN_ANGLE;
+    let gripperClosedAngle = GRIPPER_DEFAULT_CLOSED_ANGLE;
     const servoSendState = {};
     const servoUiState = {};
 
+    function isGripperServo(sid) {
+      return sid === GRIPPER_SERVO_ID;
+    }
+
+    function isAxis5Servo(sid) {
+      return sid === AXIS5_SERVO_ID;
+    }
+
+    function normalizeAxis5Limits(minA, maxA) {
+      let mn = Math.max(SERVO_MIN, Math.min(SERVO_MAX, minA));
+      let mx = Math.max(SERVO_MIN, Math.min(SERVO_MAX, maxA));
+      if (mn > mx) {
+        const t = mn;
+        mn = mx;
+        mx = t;
+      }
+      if (mn === mx) {
+        mx = Math.min(SERVO_MAX, mn + 1);
+        if (mn === mx) mn = Math.max(SERVO_MIN, mx - 1);
+      }
+      return { min: mn, max: mx };
+    }
+
+    function loadAxis5Limits() {
+      try {
+        const raw = localStorage.getItem(AXIS5_LIMITS_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (!Number.isFinite(parsed.min) || !Number.isFinite(parsed.max)) return;
+        const norm = normalizeAxis5Limits(parsed.min, parsed.max);
+        axis5MinAngle = norm.min;
+        axis5MaxAngle = norm.max;
+      } catch (e) { /* ignore invalid saved data */ }
+    }
+
+    function saveAxis5Limits() {
+      try {
+        localStorage.setItem(AXIS5_LIMITS_KEY, JSON.stringify({
+          min: axis5MinAngle,
+          max: axis5MaxAngle,
+        }));
+      } catch (e) { /* storage unavailable */ }
+    }
+
+    // Push the Axis 5 Hard Limit to the face tracker so it never drives the
+    // tilt servo past these angles into its mechanical end-stops.
+    function pushAxis5LimitsToTracker() {
+      try {
+        fetch('/face_tracking/tilt_limits', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ min: axis5MinAngle, max: axis5MaxAngle }),
+        }).catch(function () {});
+      } catch (e) { /* offline */ }
+    }
+
+    function refreshAxis5LimitInputs() {
+      const minInput = document.getElementById('servo-5-min');
+      const maxInput = document.getElementById('servo-5-max');
+      if (minInput) minInput.value = axis5MinAngle.toFixed(0);
+      if (maxInput) maxInput.value = axis5MaxAngle.toFixed(0);
+      const slider = document.getElementById('servo-5');
+      if (slider) {
+        slider.min = axis5MinAngle;
+        slider.max = axis5MaxAngle;
+      }
+    }
+
+    function applyAxis5Limits() {
+      const minInput = document.getElementById('servo-5-min');
+      const maxInput = document.getElementById('servo-5-max');
+      const minVal = parseFloat(minInput?.value);
+      const maxVal = parseFloat(maxInput?.value);
+      if (!Number.isFinite(minVal) || !Number.isFinite(maxVal)) return;
+      const norm = normalizeAxis5Limits(minVal, maxVal);
+      axis5MinAngle = norm.min;
+      axis5MaxAngle = norm.max;
+      saveAxis5Limits();
+      refreshAxis5LimitInputs();
+      pushAxis5LimitsToTracker();
+      const st = servoUiState[AXIS5_SERVO_ID] || {};
+      const current = Number.isFinite(st.angle) ? st.angle : axis5MinAngle;
+      const clamped = Math.max(axis5MinAngle, Math.min(axis5MaxAngle, current));
+      if (clamped !== current) setServoAngle(AXIS5_SERVO_ID, clamped);
+    }
+
+    function clampGripperAngle(v) {
+      return Math.max(SERVO_MIN, Math.min(SERVO_MAX, v));
+    }
+
+    function normalizeGripperLimits(open, closed) {
+      let o = clampGripperAngle(open);
+      let c = clampGripperAngle(closed);
+      if (o > c) {
+        const t = o;
+        o = c;
+        c = t;
+      }
+      if (o === c) {
+        c = clampGripperAngle(c + 1);
+        if (o === c) o = clampGripperAngle(o - 1);
+      }
+      return { open: o, closed: c };
+    }
+
+    function loadGripperLimits() {
+      try {
+        const raw = localStorage.getItem(GRIPPER_LIMITS_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (!Number.isFinite(parsed.open) || !Number.isFinite(parsed.closed)) return;
+        const norm = normalizeGripperLimits(parsed.open, parsed.closed);
+        gripperOpenAngle = norm.open;
+        gripperClosedAngle = norm.closed;
+      } catch (e) { /* ignore invalid saved data */ }
+    }
+
+    function saveGripperLimits() {
+      try {
+        localStorage.setItem(GRIPPER_LIMITS_KEY, JSON.stringify({
+          open: gripperOpenAngle,
+          closed: gripperClosedAngle,
+        }));
+      } catch (e) { /* storage unavailable */ }
+    }
+
+    function refreshGripperLimitInputs() {
+      const openInput = document.getElementById(`servo-${GRIPPER_SERVO_ID}-open`);
+      const closedInput = document.getElementById(`servo-${GRIPPER_SERVO_ID}-closed`);
+      if (openInput) openInput.value = gripperOpenAngle.toFixed(0);
+      if (closedInput) closedInput.value = gripperClosedAngle.toFixed(0);
+    }
+
+    function applyGripperLimits() {
+      const sid = GRIPPER_SERVO_ID;
+      const openInput = document.getElementById(`servo-${sid}-open`);
+      const closedInput = document.getElementById(`servo-${sid}-closed`);
+      const openVal = parseFloat(openInput?.value);
+      const closedVal = parseFloat(closedInput?.value);
+      if (!Number.isFinite(openVal) || !Number.isFinite(closedVal)) return;
+      const norm = normalizeGripperLimits(openVal, closedVal);
+      gripperOpenAngle = norm.open;
+      gripperClosedAngle = norm.closed;
+      saveGripperLimits();
+      refreshGripperLimitInputs();
+      const st = servoUiState[sid] || {};
+      const current = Number.isFinite(st.angle) ? st.angle : gripperOpenAngle;
+      updateGripperButton(sid, current, st.enabled !== false);
+      const val = document.getElementById(`servo-${sid}-val`);
+      if (val) {
+        val.textContent = `${isGripperClosed(current) ? 'CLOSE' : 'OPEN'} · ${current.toFixed(0)}°`;
+      }
+    }
+
+    function gripperMidpoint() {
+      return (gripperOpenAngle + gripperClosedAngle) / 2;
+    }
+
+    function isGripperClosed(angle) {
+      return Number.isFinite(angle) && angle >= gripperMidpoint();
+    }
+
+    function updateGripperButton(sid, angle, enabled) {
+      if (!isGripperServo(sid)) return;
+      const btn = document.getElementById(`servo-${sid}-gripper`);
+      if (!btn) return;
+      const closed = isGripperClosed(angle);
+      btn.textContent = closed ? 'Gripper: CLOSE (tap to OPEN)' : 'Gripper: OPEN (tap to CLOSE)';
+      btn.classList.toggle('on', enabled && !closed);
+      btn.disabled = !enabled;
+    }
+
     function servoHTML(s) {
       const i = s.id;
+      if (isGripperServo(i)) {
+        return `
+      <div class="servo-unit">
+        <div class="card-title">${s.name} · Gripper <small>GPIO${s.pin}</small></div>
+        <div class="servo-slider">
+          <label>State</label>
+          <span class="servo-angle" id="servo-${i}-val">OPEN · ${gripperOpenAngle}°</span>
+        </div>
+        <div class="servo-actions">
+          <button id="servo-${i}-gripper" class="servo-btn on" onclick="toggleGripper(${i})">Gripper: OPEN (tap to CLOSE)</button>
+          <button id="servo-${i}-power" class="servo-btn on" onclick="toggleServoPower(${i})">Power: ON</button>
+          <button id="servo-${i}-hold" class="servo-btn on" onclick="toggleServoHold(${i})">Hold: ON</button>
+        </div>
+        <div class="servo-slider" style="margin-top:0.55rem;">
+          <label>Limits</label>
+          <input id="servo-${i}-open" class="num-input" type="number" min="${SERVO_MIN}" max="${SERVO_MAX}" step="1"
+                 value="${gripperOpenAngle}" onchange="applyGripperLimits()" title="Open angle">
+          <span class="servo-angle" style="min-width:2.1rem;text-align:center;">to</span>
+          <input id="servo-${i}-closed" class="num-input" type="number" min="${SERVO_MIN}" max="${SERVO_MAX}" step="1"
+                 value="${gripperClosedAngle}" onchange="applyGripperLimits()" title="Closed angle">
+        </div>
+        <div class="servo-slider" style="margin-top:0.55rem;">
+          <label for="servo-${i}-delay">Detach</label>
+          <input type="range" id="servo-${i}-delay" min="0.05" max="2.0" step="0.05" value="0.25"
+                 oninput="onServoDelayInput(${i}, this.value)" onchange="commitServoDelay(${i}, this.value)">
+          <span class="servo-angle" id="servo-${i}-delay-val">0.25s</span>
+        </div>
+      </div>
+      `;
+      }
       return `
       <div class="servo-unit">
         <div class="card-title">${s.name} <small>GPIO${s.pin}</small></div>
         <div class="servo-slider">
           <label for="servo-${i}">Angle</label>
-          <input type="range" id="servo-${i}" min="${SERVO_MIN}" max="${SERVO_MAX}" value="0" step="1"
+          <input type="range" id="servo-${i}" min="${isAxis5Servo(i) ? axis5MinAngle : SERVO_MIN}" max="${isAxis5Servo(i) ? axis5MaxAngle : SERVO_MAX}" value="0" step="1"
                  oninput="setServoAngle(${i}, this.value)">
           <span class="servo-angle" id="servo-${i}-val">0°</span>
         </div>
+        ${isAxis5Servo(i) ? `
+        <div class="servo-slider" style="margin-top:0.55rem;">
+          <label>Hard Limit</label>
+          <input id="servo-${i}-min" class="num-input" type="number" min="${SERVO_MIN}" max="${SERVO_MAX}" step="1"
+                 value="${axis5MinAngle}" onchange="applyAxis5Limits()" title="Minimum angle">
+          <span class="servo-angle" style="min-width:2.1rem;text-align:center;">to</span>
+          <input id="servo-${i}-max" class="num-input" type="number" min="${SERVO_MIN}" max="${SERVO_MAX}" step="1"
+                 value="${axis5MaxAngle}" onchange="applyAxis5Limits()" title="Maximum angle">
+        </div>
+        ` : ''}
         <div class="servo-actions">
           <button id="servo-${i}-power" class="servo-btn on" onclick="toggleServoPower(${i})">Power: ON</button>
           <button id="servo-${i}-hold" class="servo-btn on" onclick="toggleServoHold(${i})">Hold: ON</button>
@@ -867,6 +1163,7 @@
       const holdBtn = document.getElementById(`servo-${sid}-hold`);
       const slider = document.getElementById(`servo-${sid}`);
       const delaySlider = document.getElementById(`servo-${sid}-delay`);
+      const angle = Number.isFinite(st.angle) ? st.angle : 0;
       const enabled = !!st.enabled;
       const hold = !!st.hold;
       if (powerBtn) {
@@ -879,9 +1176,19 @@
       }
       if (slider) slider.disabled = !enabled;
       if (delaySlider) delaySlider.disabled = !enabled;
+      const val = document.getElementById(`servo-${sid}-val`);
+      if (val && Number.isFinite(angle)) {
+        if (isGripperServo(sid)) {
+          val.textContent = `${isGripperClosed(angle) ? 'CLOSE' : 'OPEN'} · ${angle.toFixed(0)}°`;
+        } else {
+          val.textContent = angle.toFixed(0) + '°';
+        }
+      }
+      updateGripperButton(sid, angle, enabled);
       servoUiState[sid] = {
         enabled,
         hold,
+        angle,
         detach_delay: Number.isFinite(st.detach_delay) ? st.detach_delay : 0.25,
       };
     }
@@ -925,11 +1232,33 @@
 
     function setServoAngle(sid, angle) {
       angle = Math.max(SERVO_MIN, Math.min(SERVO_MAX, parseFloat(angle)));
-      document.getElementById(`servo-${sid}-val`).textContent = angle.toFixed(0) + '°';
+      if (isAxis5Servo(sid)) {
+        angle = Math.max(axis5MinAngle, Math.min(axis5MaxAngle, angle));
+      }
+      const val = document.getElementById(`servo-${sid}-val`);
+      if (val) {
+        if (isGripperServo(sid)) {
+          val.textContent = `${isGripperClosed(angle) ? 'CLOSE' : 'OPEN'} · ${angle.toFixed(0)}°`;
+        } else {
+          val.textContent = angle.toFixed(0) + '°';
+        }
+      }
       if (servoUiState[sid] && !servoUiState[sid].enabled) return;
       if (!servoSendState[sid]) servoSendState[sid] = { inflight: false, pending: angle };
       servoSendState[sid].pending = angle;
+      if (servoUiState[sid]) servoUiState[sid].angle = angle;
+      updateGripperButton(sid, angle, true);
       queueServoSend(sid);
+    }
+
+    function toggleGripper(sid) {
+      const st = servoUiState[sid] || {};
+      if (!st.enabled) return;
+      const current = Number.isFinite(st.angle)
+        ? st.angle
+        : (Number.isFinite(servoSendState[sid]?.pending) ? servoSendState[sid].pending : gripperOpenAngle);
+      const next = isGripperClosed(current) ? gripperOpenAngle : gripperClosedAngle;
+      setServoAngle(sid, next);
     }
 
     async function toggleServoPower(sid) {
@@ -967,7 +1296,12 @@
     async function initServos() {
       const container = document.getElementById('servo-controls');
       if (!container) return;
+      loadAxis5Limits();
+      loadGripperLimits();
       container.innerHTML = SERVOS.map(servoHTML).join('');
+      refreshAxis5LimitInputs();
+      refreshGripperLimitInputs();
+      pushAxis5LimitsToTracker();
       SERVOS.forEach(s => {
         try {
           fetch(`/servo/${s.id}/angle`).then(r => r.json()).then(d => {
@@ -975,7 +1309,13 @@
             const val = document.getElementById(`servo-${s.id}-val`);
             if (input && Number.isFinite(d.angle)) {
               input.value = d.angle;
-              val.textContent = d.angle.toFixed(0) + '°';
+            }
+            if (val && Number.isFinite(d.angle)) {
+              if (isGripperServo(s.id)) {
+                val.textContent = `${isGripperClosed(d.angle) ? 'CLOSE' : 'OPEN'} · ${d.angle.toFixed(0)}°`;
+              } else {
+                val.textContent = d.angle.toFixed(0) + '°';
+              }
             }
             if (Number.isFinite(d.detach_delay)) {
               const ds = document.getElementById(`servo-${s.id}-delay`);
@@ -983,6 +1323,7 @@
               onServoDelayInput(s.id, d.detach_delay);
             }
             applyServoUiState(s.id, {
+              angle: Number.isFinite(d.angle) ? d.angle : 0,
               enabled: d.enabled !== false,
               hold: d.hold !== false,
               detach_delay: Number.isFinite(d.detach_delay) ? d.detach_delay : 0.25,
@@ -1507,6 +1848,7 @@ ${m.limits ? `
     ];
     const ccByKey = Object.fromEntries(CC_EMOTIONS.map(e => [e.key, e]));
     let camVisible = false, camTimer = null;
+    let faceTrackOn = false;
     (function buildCamBars() {
       const host = document.getElementById('cc-bars');
       CC_EMOTIONS.forEach(e => {
@@ -1538,20 +1880,21 @@ ${m.limits ? `
         };
         img.src = '/camera/stream?t=' + Date.now();
         pollEmotion();
+        pollFaceTracking();
         if (!camTimer) camTimer = setInterval(function () {
           pollEmotion();
-          if (objectsOn) pollObjects();
+          pollFaceTracking();
         }, 600);
       } else {
         if (camTimer) { clearInterval(camTimer); camTimer = null; }
-        if (objectsOn) {                    // release object-detection CPU
-          objectsOn = false;
-          const ob = document.getElementById('cc-obj-toggle');
-          ob.classList.remove('on');
-          ob.innerHTML = '\uD83C\uDFAF Detect objects: OFF';
-          document.getElementById('cc-obj-primary').style.display = 'none';
-          document.getElementById('cc-obj-list').innerHTML = '';
-          fetch('/objects/enable', {
+        if (faceTrackOn) {
+          faceTrackOn = false;
+          const fb = document.getElementById('cc-face-track-toggle');
+          if (fb) {
+            fb.classList.remove('on');
+            fb.innerHTML = '&#128100; Face tracking: OFF';
+          }
+          fetch('/face_tracking/enable', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ on: false }),
           }).catch(function () {});
@@ -1635,9 +1978,6 @@ ${m.limits ? `
       }
     }
 
-    // ---- object detection ----
-    let objectsOn = false;
-
     async function testRings() {
       const btn = document.getElementById('cc-rings-test');
       const orig = btn.innerHTML;
@@ -1658,57 +1998,101 @@ ${m.limits ? `
       }, 4200);
     }
 
-    async function toggleObjects() {
-      objectsOn = !objectsOn;
-      const btn = document.getElementById('cc-obj-toggle');
-      btn.classList.toggle('on', objectsOn);
-      btn.innerHTML = '\uD83C\uDFAF Detect objects: ' + (objectsOn ? 'ON' : 'OFF');
+    async function toggleFaceTracking() {
+      faceTrackOn = !faceTrackOn;
+      const btn = document.getElementById('cc-face-track-toggle');
+      if (btn) {
+        btn.classList.toggle('on', faceTrackOn);
+        btn.innerHTML = '&#128100; Face tracking: ' + (faceTrackOn ? 'ON' : 'OFF');
+      }
       try {
-        await fetch('/objects/enable', {
+        const r = await fetch('/face_tracking/enable', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ on: objectsOn }),
+          body: JSON.stringify({ on: faceTrackOn }),
         });
-      } catch (e) { /* offline */ }
-      if (!objectsOn) {
-        document.getElementById('cc-obj-primary').style.display = 'none';
-        document.getElementById('cc-obj-list').innerHTML = '';
-      } else {
-        pollObjects();
+        if (!r.ok) throw new Error('failed');
+      } catch (e) {
+        faceTrackOn = !faceTrackOn;
+        if (btn) {
+          btn.classList.toggle('on', faceTrackOn);
+          btn.innerHTML = '&#128100; Face tracking: ' + (faceTrackOn ? 'ON' : 'OFF');
+        }
       }
+      pollFaceTracking();
     }
 
-    async function pollObjects() {
-      if (!objectsOn) return;
+    async function pollFaceTracking() {
+      const hint = document.getElementById('cc-face-track-hint');
+      if (!hint) return;
       try {
-        const r = await fetch('/objects/latest', { cache: 'no-store' });
+        const r = await fetch('/face_tracking/status', { cache: 'no-store' });
         if (!r.ok) return;
         const d = await r.json();
-        const prim = document.getElementById('cc-obj-primary');
-        if (d.primary) {
-          const p = d.primary;
-          prim.style.display = 'block';
-          prim.innerHTML = '&#127919; <b>' + p.label + '</b> ' +
-            Math.round(p.confidence * 100) + '%  ' +
-            '<span class="coords">center [' + p.center[0] + ',' + p.center[1] + ']' +
-            ' &middot; offset [' + p.offset[0] + ',' + p.offset[1] + ']</span>';
-        } else {
-          prim.style.display = d.enabled ? 'block' : 'none';
-          if (d.enabled) prim.innerHTML = '<span class="coords">no objects in view\u2026</span>';
+        faceTrackOn = !!d.enabled;
+        const btn = document.getElementById('cc-face-track-toggle');
+        if (btn) {
+          btn.classList.toggle('on', faceTrackOn);
+          btn.innerHTML = '&#128100; Face tracking: ' + (faceTrackOn ? 'ON' : 'OFF');
         }
-        const list = document.getElementById('cc-obj-list');
-        list.innerHTML = '';
-        (d.objects || []).slice(0, 10).forEach(o => {
-          const pill = document.createElement('span');
-          pill.className = 'cc-obj-pill';
-          pill.textContent = o.label + ' ' + Math.round(o.confidence * 100) + '%';
-          list.appendChild(pill);
-        });
-        const hint = document.getElementById('cc-obj-hint');
-        if (hint) hint.textContent = 'YOLOv4-tiny \u00B7 ' + d.count + ' object(s) \u00B7 ' +
-          (d.infer_ms ? Math.round(d.infer_ms) + ' ms' : 'COCO 80 classes');
+        const speedBox = document.getElementById('cc-track-speed');
+        if (speedBox) speedBox.classList.toggle('show', faceTrackOn);
+        if (!trackSpeedDragging) {
+          if (Number.isFinite(d.pan_speed)) setTrackSlider('pan', d.pan_speed);
+          if (Number.isFinite(d.tilt_speed)) setTrackSlider('tilt', d.tilt_speed);
+        }
+        if (!faceTrackOn) {
+          hint.textContent = 'Tracks face using Motor 1 (pan) + Axis 5 (tilt).';
+          return;
+        }
+        if (!d.has_face) {
+          hint.textContent = 'Face tracking ON: searching for face...';
+          return;
+        }
+        const ex = (d.error_px && d.error_px.length > 0) ? d.error_px[0] : 0;
+        const ey = (d.error_px && d.error_px.length > 1) ? d.error_px[1] : 0;
+        const sps = d.motor_sps || 0;
+        const tilt = Number.isFinite(d.servo_angle) ? d.servo_angle.toFixed(1) : '--';
+        hint.textContent = 'Face lock: pan ' + sps + ' sps, tilt ' + tilt + '°, error [' + ex + ',' + ey + ']';
       } catch (e) { /* offline */ }
     }
+
+    // ---- face tracking speed sliders ----
+    let trackSpeedDragging = false;
+    let trackSpeedTimer = null;
+
+    function setTrackSlider(which, value) {
+      const s = document.getElementById('cc-track-' + which + '-speed');
+      const lbl = document.getElementById('cc-track-' + which + '-val');
+      if (s) s.value = value;
+      if (lbl) lbl.innerHTML = Number(value).toFixed(2) + '&times;';
+    }
+
+    function sendTrackSpeed() {
+      const pan = parseFloat(document.getElementById('cc-track-pan-speed').value);
+      const tilt = parseFloat(document.getElementById('cc-track-tilt-speed').value);
+      if (trackSpeedTimer) clearTimeout(trackSpeedTimer);
+      trackSpeedTimer = setTimeout(function () {
+        fetch('/face_tracking/speed', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pan: pan, tilt: tilt }),
+        }).catch(function () {});
+      }, 150);
+    }
+
+    (function wireTrackSpeed() {
+      ['pan', 'tilt'].forEach(function (which) {
+        const s = document.getElementById('cc-track-' + which + '-speed');
+        if (!s) return;
+        s.addEventListener('input', function () {
+          trackSpeedDragging = true;
+          const lbl = document.getElementById('cc-track-' + which + '-val');
+          if (lbl) lbl.innerHTML = Number(s.value).toFixed(2) + '&times;';
+          sendTrackSpeed();
+        });
+        s.addEventListener('change', function () { trackSpeedDragging = false; });
+      });
+    })();
 
     function fmtUptime(s) {
       if (s === null || s === undefined) return '--';
@@ -2028,6 +2412,338 @@ ${m.limits ? `
     renderWaypoints();
     refreshPrograms();
     initServos();
+  </script>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+      "three/examples/jsm/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+      "urdf-loader": "https://unpkg.com/urdf-loader@0.12.6/src/URDFLoader.js"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+    import URDFLoader from 'urdf-loader';
+
+    const stage = document.getElementById('twin-stage');
+    const host = document.getElementById('twin-canvas');
+    const toggleBtn = document.getElementById('twin-toggle');
+    const zeroBtn = document.getElementById('twin-zero');
+    const statusEl = document.getElementById('twin-status');
+    const modesEl = document.getElementById('twin-modes');
+    const modeMirrorBtn = document.getElementById('twin-mode-mirror');
+    const modeCommandBtn = document.getElementById('twin-mode-command');
+    const cmdPanel = document.getElementById('twin-cmd');
+    const cmdSliders = document.getElementById('twin-cmd-sliders');
+    const speedEl = document.getElementById('twin-speed');
+    const speedValEl = document.getElementById('twin-speed-val');
+    const armEl = document.getElementById('twin-arm');
+    const sendBtn = document.getElementById('twin-send');
+    const stopMoveBtn = document.getElementById('twin-stop-move');
+    const moveStatusEl = document.getElementById('twin-move-status');
+    const limitRowsEl = document.getElementById('twin-limits-rows');
+    const limitApplyBtn = document.getElementById('twin-limits-apply');
+
+    const TWIN_LIMITS_KEY = 'twin_limits_v1';
+    let inited = false, on = false;
+    let mode = 'mirror';                // 'mirror' | 'command'
+    let renderer, scene, camera, controls, robot = null;
+    let raf = 0, pollTimer = 0, moveTimer = 0;
+    let commandable = [];               // ['joint1', ...] joints that drive hardware
+    let limits = {};                   // joint -> [loRad, hiRad]
+    const targetAngles = {};   // joint -> desired radians (from /joint_states)
+    const curAngles = {};      // joint -> smoothed radians applied to model
+    const SMOOTH = 0.25;
+    const RAD2DEG = 180 / Math.PI, DEG2RAD = Math.PI / 180;
+
+    function setStatus(text, cls) {
+      statusEl.textContent = text;
+      statusEl.className = 'twin-status' + (cls ? ' ' + cls : '');
+    }
+
+    function init() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0e1116);
+      camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
+      camera.position.set(0.8, 0.8, 0.8);
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      host.appendChild(renderer.domElement);
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+      const d1 = new THREE.DirectionalLight(0xffffff, 1.1); d1.position.set(1, 1.5, 1); scene.add(d1);
+      const d2 = new THREE.DirectionalLight(0x88aaff, 0.4); d2.position.set(-1, 0.5, -1); scene.add(d2);
+      scene.add(new THREE.GridHelper(2, 20, 0x2a3142, 0x1c2130));
+
+      const manager = new THREE.LoadingManager();
+      manager.onLoad = () => { if (robot) { frameRobot(); setStatus('live', 'live'); } };
+      const loader = new URDFLoader(manager);
+      loader.loadMeshCb = (path, mgr, done) => {
+        new STLLoader(mgr).load(path, geom => {
+          geom.computeVertexNormals();
+          done(new THREE.Mesh(geom, new THREE.MeshStandardMaterial(
+            { color: 0xbfc6d2, metalness: 0.35, roughness: 0.55 })));
+        }, undefined, err => done(null, err));
+      };
+      loader.load('/static/robot/robot.urdf', result => {
+        robot = result;
+        robot.rotation.x = -Math.PI / 2;   // URDF Z-up -> three Y-up
+        scene.add(robot);
+        Object.values(robot.joints).forEach(j => {
+          if (j.jointType !== 'fixed') { targetAngles[j.name] = 0; curAngles[j.name] = 0; }
+        });
+      }, undefined, () => setStatus('model load error', 'err'));
+
+      window.addEventListener('resize', () => { if (on) resize(); });
+      inited = true;
+    }
+
+    function resize() {
+      const w = stage.clientWidth, h = stage.clientHeight;
+      if (!w || !h) return;
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+
+    function frameRobot() {
+      const box = new THREE.Box3().setFromObject(robot);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      controls.target.copy(center);
+      camera.position.copy(center).add(new THREE.Vector3(1, 0.8, 1).normalize().multiplyScalar(maxDim * 1.9));
+      camera.near = maxDim / 100; camera.far = maxDim * 100; camera.updateProjectionMatrix();
+      controls.update();
+    }
+
+    function animate() {
+      raf = requestAnimationFrame(animate);
+      if (robot) {
+        for (const name in targetAngles) {
+          const cur = curAngles[name] || 0;
+          const next = cur + (targetAngles[name] - cur) * SMOOTH;
+          curAngles[name] = next;
+          robot.setJointValue(name, next);
+        }
+      }
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    async function fetchJoints() {
+      try {
+        const r = await fetch('/joint_states', { cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (d.angles) for (const name in d.angles) targetAngles[name] = d.angles[name];
+      } catch (e) { /* offline */ }
+    }
+
+    async function setEnabled(state) {
+      try {
+        await fetch('/twin/enable', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ on: state }),
+        });
+      } catch (e) { /* offline */ }
+    }
+
+    toggleBtn.addEventListener('click', () => {
+      on = !on;
+      if (on) {
+        stage.style.display = 'block';
+        if (!inited) init();
+        requestAnimationFrame(() => { resize(); });
+        setStatus('loading…');
+        loadConfig();
+        if (!raf) animate();
+        toggleBtn.textContent = 'Hide twin';
+        zeroBtn.disabled = false;
+        modesEl.style.display = 'inline-flex';
+        setMode('mirror');
+      } else {
+        stage.style.display = 'none';
+        setEnabled(false);
+        stopPolling();
+        if (moveTimer) { clearInterval(moveTimer); moveTimer = 0; }
+        if (raf) { cancelAnimationFrame(raf); raf = 0; }
+        toggleBtn.textContent = 'Show twin';
+        zeroBtn.disabled = true;
+        modesEl.style.display = 'none';
+        cmdPanel.style.display = 'none';
+        setStatus('off');
+      }
+    });
+
+    function stopPolling() {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = 0; }
+    }
+
+    function setMode(m) {
+      mode = m;
+      modeMirrorBtn.classList.toggle('active', m === 'mirror');
+      modeCommandBtn.classList.toggle('active', m === 'command');
+      if (m === 'mirror') {
+        cmdPanel.style.display = 'none';
+        setEnabled(true);
+        if (!pollTimer) pollTimer = setInterval(fetchJoints, 120);
+        setStatus('live', 'live');
+      } else {
+        // Command mode: stop mirroring so the sliders own the pose.
+        setEnabled(false);
+        stopPolling();
+        cmdPanel.style.display = 'block';
+        buildCommandUI();
+        setStatus('command', 'live');
+      }
+    }
+
+    modeMirrorBtn.addEventListener('click', () => { if (mode !== 'mirror') setMode('mirror'); });
+    modeCommandBtn.addEventListener('click', () => { if (mode !== 'command') setMode('command'); });
+
+    async function loadConfig() {
+      try {
+        const r = await fetch('/twin/config', { cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json();
+        commandable = d.commandable || [];
+        limits = {};
+        for (const name in (d.limits || {})) limits[name] = d.limits[name].slice();
+      } catch (e) { /* offline */ }
+      // Local overrides win (last edited limits).
+      try {
+        const saved = JSON.parse(localStorage.getItem(TWIN_LIMITS_KEY) || 'null');
+        if (saved) for (const name in saved) if (limits[name]) limits[name] = saved[name];
+      } catch (e) { /* ignore */ }
+    }
+
+    function buildCommandUI() {
+      cmdSliders.innerHTML = '';
+      limitRowsEl.innerHTML = '';
+      commandable.forEach(name => {
+        const lim = limits[name] || [-Math.PI, Math.PI];
+        const loDeg = Math.round(lim[0] * RAD2DEG), hiDeg = Math.round(lim[1] * RAD2DEG);
+        const cur = (targetAngles[name] || 0) * RAD2DEG;
+
+        const row = document.createElement('label');
+        row.className = 'twin-jrow';
+        row.innerHTML =
+          `<span>${name}</span>` +
+          `<input type="range" min="${loDeg}" max="${hiDeg}" step="1" value="${Math.round(cur)}" data-j="${name}">` +
+          `<span class="v" id="twin-v-${name}">${Math.round(cur)}&deg;</span>`;
+        const slider = row.querySelector('input');
+        slider.addEventListener('input', () => {
+          const deg = parseFloat(slider.value);
+          targetAngles[name] = deg * DEG2RAD;
+          document.getElementById('twin-v-' + name).textContent = Math.round(deg) + '\u00b0';
+        });
+        cmdSliders.appendChild(row);
+
+        const lrow = document.createElement('div');
+        lrow.className = 'twin-lrow';
+        lrow.innerHTML =
+          `<span>${name}</span>` +
+          `<input type="number" step="1" value="${loDeg}" data-lim="${name}" data-edge="lo" placeholder="min°">` +
+          `<input type="number" step="1" value="${hiDeg}" data-lim="${name}" data-edge="hi" placeholder="max°">`;
+        limitRowsEl.appendChild(lrow);
+      });
+    }
+
+    speedEl.addEventListener('input', () => {
+      speedValEl.textContent = parseFloat(speedEl.value).toFixed(2) + '\u00d7';
+    });
+
+    armEl.addEventListener('change', () => { sendBtn.disabled = !armEl.checked; });
+
+    sendBtn.addEventListener('click', async () => {
+      if (!armEl.checked) return;
+      const angles = {};
+      commandable.forEach(name => { angles[name] = targetAngles[name] || 0; });
+      setMoveStatus('sending…');
+      try {
+        const r = await fetch('/twin/move', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ angles, speed: parseFloat(speedEl.value) }),
+        });
+        const d = await r.json();
+        if (!d.started) { setMoveStatus(d.message || 'rejected', 'err'); return; }
+        setMoveStatus('moving…');
+        startMovePolling();
+      } catch (e) { setMoveStatus('offline', 'err'); }
+    });
+
+    stopMoveBtn.addEventListener('click', async () => {
+      try { await fetch('/twin/stop', { method: 'POST' }); } catch (e) { /* offline */ }
+      setMoveStatus('stopped', 'err');
+      if (moveTimer) { clearInterval(moveTimer); moveTimer = 0; }
+    });
+
+    function startMovePolling() {
+      if (moveTimer) clearInterval(moveTimer);
+      moveTimer = setInterval(async () => {
+        try {
+          const r = await fetch('/twin/move_status', { cache: 'no-store' });
+          const d = await r.json();
+          if (!d.moving) {
+            clearInterval(moveTimer); moveTimer = 0;
+            setMoveStatus(d.message || 'done', d.ok === false ? 'err' : 'live');
+          } else {
+            setMoveStatus(d.message || 'moving…');
+          }
+        } catch (e) { /* offline */ }
+      }, 300);
+    }
+
+    function setMoveStatus(text, cls) {
+      moveStatusEl.textContent = text;
+      moveStatusEl.className = 'twin-status' + (cls ? ' ' + cls : '');
+    }
+
+    limitApplyBtn.addEventListener('click', async () => {
+      const out = {};
+      limitRowsEl.querySelectorAll('input[data-lim]').forEach(inp => {
+        const name = inp.dataset.lim;
+        if (!out[name]) out[name] = [null, null];
+        const v = parseFloat(inp.value) * DEG2RAD;
+        out[name][inp.dataset.edge === 'lo' ? 0 : 1] = v;
+      });
+      for (const name in out) {
+        let [lo, hi] = out[name];
+        if (lo > hi) { const t = lo; lo = hi; hi = t; }
+        limits[name] = [lo, hi];
+      }
+      try {
+        localStorage.setItem(TWIN_LIMITS_KEY, JSON.stringify(limits));
+        await fetch('/twin/limits', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ limits }),
+        });
+      } catch (e) { /* offline */ }
+      buildCommandUI();   // rebuild sliders with new ranges
+      setMoveStatus('limits applied', 'live');
+    });
+
+    zeroBtn.addEventListener('click', async () => {
+      try {
+        const r = await fetch('/twin/zero', { method: 'POST' });
+        const d = await r.json();
+        if (mode === 'mirror' && d.angles) {
+          for (const name in d.angles) targetAngles[name] = d.angles[name];
+        } else {
+          // In command mode home means "all joints 0" relative to the new zero.
+          commandable.forEach(name => { targetAngles[name] = 0; });
+          buildCommandUI();
+        }
+        setStatus('home set', 'live');
+      } catch (e) { /* offline */ }
+    });
   </script>
 </body>
 </html>

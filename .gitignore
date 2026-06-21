@@ -7,3 +7,8 @@ __pycache__/
 led_app/models/
 *.onnx
 
+# Raw SolidWorks CAD export (source only; the runtime URDF/meshes live in
+# led_app/static/robot/). Large and not needed to build or deploy.
+/TOP Level assembly robotic/
+/TOP Level assembly robotic.rar
+

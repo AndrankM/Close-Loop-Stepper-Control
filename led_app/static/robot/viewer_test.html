@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Robot twin — test viewer</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0e1116; color: #cdd3e1;
+      font-family: system-ui, sans-serif; overflow: hidden; }
+    #app { position: fixed; inset: 0; }
+    #panel { position: fixed; top: 12px; left: 12px; width: 250px; padding: 12px 14px;
+      background: rgba(20,24,33,0.92); border: 1px solid #2a3142; border-radius: 10px;
+      backdrop-filter: blur(4px); z-index: 5; }
+    #panel h1 { font-size: 0.85rem; margin: 0 0 0.6rem; color: #8ab4ff; }
+    .row { margin-bottom: 0.5rem; }
+    .row label { display: flex; justify-content: space-between; font-size: 0.72rem;
+      color: #aab2c5; margin-bottom: 0.15rem; }
+    .row input[type=range] { width: 100%; }
+    .guess { color: #ffb347; }
+    #status { font-size: 0.7rem; color: #6f7891; margin-top: 0.4rem; }
+    button { width: 100%; margin-top: 0.4rem; padding: 0.35rem; font-size: 0.72rem;
+      background: #1c2130; color: #cdd3e1; border: 1px solid #2a3142; border-radius: 6px;
+      cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="panel">
+    <h1>Digital twin · test</h1>
+    <div id="controls"></div>
+    <button id="reset">Reset pose</button>
+    <div id="status">loading…</div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+      "three/examples/jsm/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+      "urdf-loader": "https://unpkg.com/urdf-loader@0.12.6/src/URDFLoader.js"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+    import URDFLoader from 'urdf-loader';
+
+    const status = document.getElementById('status');
+    const app = document.getElementById('app');
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0e1116);
+
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
+    camera.position.set(0.8, 0.8, 0.8);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    app.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const dir = new THREE.DirectionalLight(0xffffff, 1.1);
+    dir.position.set(1, 1.5, 1);
+    scene.add(dir);
+    const dir2 = new THREE.DirectionalLight(0x88aaff, 0.4);
+    dir2.position.set(-1, 0.5, -1);
+    scene.add(dir2);
+    const grid = new THREE.GridHelper(2, 20, 0x2a3142, 0x1c2130);
+    scene.add(grid);
+    scene.add(new THREE.AxesHelper(0.2));
+
+    function resize() {
+      const w = app.clientWidth, h = app.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    let robot = null;
+    const targetAngles = {};   // where each joint should go (slider)
+    const curAngles = {};      // smoothly-interpolated current value
+    const SMOOTH = 0.25;       // 0..1 per frame; higher = snappier
+
+    function setTarget(name, val) {
+      targetAngles[name] = val;
+      if (!(name in curAngles)) curAngles[name] = val;
+    }
+
+    const manager = new THREE.LoadingManager();
+    manager.onLoad = () => {
+      if (!robot) return;
+      frameRobot();
+      status.textContent = 'loaded · ' + Object.keys(robot.joints).length + ' joints';
+      if (location.hash.includes('test')) {
+        setTarget('joint2', 0.6);
+        setTarget('joint3', 0.8);
+        setTarget('joint4', 0.5);
+        setTarget('joint5', 0.5);
+      }
+    };
+    const loader = new URDFLoader(manager);
+    loader.loadMeshCb = (path, mgr, done) => {
+      new STLLoader(mgr).load(path, geom => {
+        geom.computeVertexNormals();
+        const mat = new THREE.MeshStandardMaterial({
+          color: 0xbfc6d2, metalness: 0.35, roughness: 0.55 });
+        done(new THREE.Mesh(geom, mat));
+      }, undefined, err => { console.error('mesh', path, err); done(null, err); });
+    };
+
+    loader.load('robot.urdf', result => {
+      robot = result;
+      robot.rotation.x = -Math.PI / 2;   // URDF Z-up -> three Y-up
+      scene.add(robot);
+      buildControls();
+      window.__robot = robot;
+      window.__scene = scene;
+    }, undefined, err => {
+      console.error(err);
+      status.textContent = 'load error (see console)';
+    });
+
+    function frameRobot() {
+      const box = new THREE.Box3().setFromObject(robot);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      controls.target.copy(center);
+      camera.position.copy(center).add(
+        new THREE.Vector3(1, 0.8, 1).normalize().multiplyScalar(maxDim * 1.8));
+      camera.near = maxDim / 100; camera.far = maxDim * 100;
+      camera.updateProjectionMatrix();
+      controls.update();
+    }
+
+    function buildControls() {
+      const wrap = document.getElementById('controls');
+      wrap.innerHTML = '';
+      const guessSet = new Set();
+      Object.values(robot.joints).forEach(j => {
+        if (j.jointType === 'fixed') return;
+        const cont = j.jointType === 'continuous' ||
+          (j.limit && j.limit.lower === j.limit.upper);
+        const lo = (!cont && j.limit && isFinite(j.limit.lower)) ? j.limit.lower : -Math.PI;
+        const hi = (!cont && j.limit && isFinite(j.limit.upper)) ? j.limit.upper : Math.PI;
+        const row = document.createElement('div');
+        row.className = 'row';
+        const guess = guessSet.has(j.name) ? ' <span class="guess">(guess)</span>' : '';
+        row.innerHTML =
+          '<label><span>' + j.name + guess + '</span><span id="v-' + j.name + '">0.00</span></label>' +
+          '<input type="range" min="' + lo + '" max="' + hi + '" step="0.01" value="0" id="s-' + j.name + '">';
+        wrap.appendChild(row);
+        curAngles[j.name] = 0;
+        targetAngles[j.name] = 0;
+        row.querySelector('input').addEventListener('input', e => {
+          const val = parseFloat(e.target.value);
+          setTarget(j.name, val);
+          document.getElementById('v-' + j.name).textContent = val.toFixed(2);
+        });
+      });
+    }
+
+    document.getElementById('reset').addEventListener('click', () => {
+      if (!robot) return;
+      Object.values(robot.joints).forEach(j => setTarget(j.name, 0));
+      document.querySelectorAll('#controls input').forEach(i => i.value = 0);
+      document.querySelectorAll('#controls label span:last-child').forEach(s => s.textContent = '0.00');
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (robot) {
+        for (const name in targetAngles) {
+          const t = targetAngles[name];
+          const c = curAngles[name] ?? t;
+          const next = Math.abs(t - c) < 1e-4 ? t : c + (t - c) * SMOOTH;
+          curAngles[name] = next;
+          robot.setJointValue(name, next);
+        }
+      }
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>

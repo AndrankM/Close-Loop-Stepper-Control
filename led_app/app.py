@@ -1,5 +1,6 @@
 import os
 import json
+import math
 import re
 import socket
 import threading
@@ -14,7 +15,6 @@ try:
         DigitalOutputDevice,
         PWMOutputDevice,
         DigitalInputDevice,
-        AngularServo,
     )
 
     GPIO_AVAILABLE = True
@@ -22,8 +22,18 @@ except Exception:  # gpiozero not installed / not running on a Pi
     DigitalOutputDevice = None
     PWMOutputDevice = None
     DigitalInputDevice = None
-    AngularServo = None
     GPIO_AVAILABLE = False
+
+try:
+    # True hardware PWM on the Pi 5 RP1 chip. Unlike pigpio (which does not
+    # support the Pi 5) or gpiozero software PWM, this drives GPIO 12/13 with a
+    # jitter-free kernel-timed pulse train, eliminating servo bouncing.
+    from rpi_hardware_pwm import HardwarePWM
+
+    HW_PWM_AVAILABLE = True
+except Exception:  # rpi-hardware-pwm not installed
+    HardwarePWM = None
+    HW_PWM_AVAILABLE = False
 
 try:
     import serial  # pyserial
@@ -38,6 +48,15 @@ try:
     import numpy as np
 
     CV2_AVAILABLE = True
+    # The stepper STEP pulses are produced by software-timed PWM (gpiozero on
+    # ordinary GPIO). OpenCV's DNN inference otherwise fans out across EVERY CPU
+    # core and starves that PWM thread, which shows up as motor vibration the
+    # moment the camera/emotion detection turns on. Cap OpenCV to a subset of
+    # cores so at least one core stays free to clock the step pulses cleanly.
+    try:
+        cv2.setNumThreads(int(os.environ.get("CV2_NUM_THREADS", "1")))
+    except Exception:
+        pass
 except Exception:  # opencv not installed / headless dev box
     cv2 = None
     np = None
@@ -400,16 +419,27 @@ MOTOR4_GEAR_RATIO = 1.0
 M3_LIMIT_PIN = 26
 M4_LIMIT_PIN = 19
 
-# Servo motors for axis 5 & 6 (standard RC servos with 50 Hz PWM).
-# GPIO 12/13 are hardware PWM (PWM0 ch0/ch1) on the Pi 5.
-SERVO5_PIN = 12  # physical pin 32
-SERVO6_PIN = 13  # physical pin 33
+# Servo motors for axis 5 & 6 (DX-227 270-degree servos via hardware PWM).
+# GPIO 12/13 are real hardware PWM pins on the Pi 5 (RP1 pwmchip2). Hardware
+# PWM produces a perfectly stable pulse train, which removes the idle jitter
+# seen with gpiozero software PWM (pigpio does not support the Pi 5 at all).
+SERVO5_PIN = 12  # physical pin 32 -> PWM channel 0
+SERVO6_PIN = 13  # physical pin 33 -> PWM channel 1
+SERVO5_CHANNEL = 0
+SERVO6_CHANNEL = 1
+# RP1 PWM0 (hardware address 1f00098000) drives GPIO 12/13 on the Pi 5. The
+# sysfs pwmchip index for this block is not fixed, so it is auto-detected at
+# runtime; this value is only a fallback if detection fails.
+SERVO_PWM_CHIP = 0
+SERVO_PWM_HW_ADDR = "1f00098000"  # RP1 PWM0 peripheral address
+SERVO_PWM_HZ = 50  # 20 ms frame
+SERVO_PERIOD_US = 20000
 SERVO_MIN_ANGLE = -135
 SERVO_MAX_ANGLE = 135
-# DX-227 (270deg) generally accepts a wider pulse span than hobby 180deg servos.
-SERVO_MIN_PULSE = 0.0005
-SERVO_MAX_PULSE = 0.0025
-SERVO_FRAME_WIDTH = 0.02
+# DX-227 pulse range (microseconds): 500us = -135°, 1500us = 0°, 2500us = +135°
+SERVO_MIN_PULSE_US = 500
+SERVO_CENTER_PULSE_US = 1500
+SERVO_MAX_PULSE_US = 2500
 
 # Driver enable pin is active-LOW: drive LOW to energize the coils.
 EN_ACTIVE_LOW = True
@@ -419,6 +449,12 @@ EN_ACTIVE_LOW = True
 MIN_SPEED = 1
 MAX_SPEED = 6000
 DEFAULT_SPEED = 400
+
+# Anti-resonance speed band (steps/sec). Many NEMA17 systems can bounce or
+# chatter at very low pulse rates; skip that band on start and cut motion just
+# above it on stop so all axes feel smooth.
+STEP_START_SPS = int(os.environ.get("STEP_START_SPS", "180"))
+STEP_STOP_SPS = int(os.environ.get("STEP_STOP_SPS", "140"))
 
 # Mechanical / driver geometry used to convert between steps/sec and RPM.
 #   full_steps_per_rev: motor's native step count (1.8 deg NEMA 17 -> 200)
@@ -430,7 +466,7 @@ DEFAULT_MICROSTEPPING = 16
 # target instead of jumping, which avoids stalling/skipping at high speeds.
 MIN_ACCEL = 100
 MAX_ACCEL = 50000
-DEFAULT_ACCEL = 4000
+DEFAULT_ACCEL = 2500
 
 # ---------------------------------------------------------------------------
 # Closed-loop positioning (teach & playback)
@@ -449,6 +485,23 @@ PROGRAMS_DIR = os.path.join(
 
 def _clamp(value, lo, hi):
     return max(lo, min(hi, value))
+
+
+def _as_bool(value, default=False):
+    """Parse booleans robustly from JSON/strings."""
+    if value is None:
+        return bool(default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        s = value.strip().lower()
+        if s in ("1", "true", "yes", "on"):
+            return True
+        if s in ("0", "false", "no", "off"):
+            return False
+    return bool(value)
 
 
 class StepperMotor:
@@ -478,6 +531,12 @@ class StepperMotor:
         # (used to HOLD a position during closed-loop moves / playback).
         self._pause = threading.Event()
         self._thread = None
+        # Live step-PWM output state. The pulse train is only (re)written when
+        # one of these actually changes; re-issuing the frequency/value every
+        # ramp cycle restarts the pulse train on the Pi PWM backend, which
+        # corrupts step timing and makes the motor vibrate/bounce.
+        self._pwm_on = False
+        self._last_freq = 0
 
         if GPIO_AVAILABLE:
             # The device handles active-low inversion so "off" leaves the
@@ -556,14 +615,24 @@ class StepperMotor:
             if self.current_speed <= 0.0:
                 # Fully stopped: keep the coils energized but emit no pulses
                 # (position hold). The smooth ramp-down already happened above.
-                if self._step is not None:
+                if self._step is not None and self._pwm_on:
                     self._step.value = 0.0
+                self._pwm_on = False
+                self._last_freq = 0
             else:
                 # Moving or decelerating: emit pulses at the live ramped speed.
-                speed = max(self.current_speed, float(MIN_SPEED))
+                # Only touch the PWM when the frequency actually changes or when
+                # transitioning from stopped -> moving. During a steady jog the
+                # frequency is constant, so the pulse train is left completely
+                # untouched and runs rock-solid (no per-cycle restart glitches).
+                freq = max(1, int(round(self.current_speed)))
                 if self._step is not None:
-                    self._step.frequency = max(1, int(round(speed)))
-                    self._step.value = 0.5  # 50% duty -> emit step pulses
+                    if freq != self._last_freq:
+                        self._step.frequency = freq
+                        self._last_freq = freq
+                    if not self._pwm_on:
+                        self._step.value = 0.5  # 50% duty -> emit step pulses
+                        self._pwm_on = True
             time.sleep(RAMP_DT)
 
         # Worker is exiting (soft ramp-down completed). Stop pulses, de-energize
@@ -573,6 +642,8 @@ class StepperMotor:
         self._blocked_dir = None
         if self._step is not None:
             self._step.value = 0.0  # stop emitting pulses
+        self._pwm_on = False
+        self._last_freq = 0
         if self._en is not None:
             self._en.off()
         with self._lock:
@@ -644,6 +715,8 @@ class StepperMotor:
         self.current_speed = 0.0
         if self._step is not None:
             self._step.value = 0.0  # stop emitting pulses
+        self._pwm_on = False
+        self._last_freq = 0
         if self._en is not None:
             self._en.off()  # de-energize coils
 
@@ -755,14 +828,67 @@ motors = {
     ),
 }
 
-# Standard RC servos for axis 5 & 6 using calibrated 270deg settings.
-servos = {}
+# Standard RC servos for axis 5 & 6 using true hardware PWM (rpi-hardware-pwm).
+servos = {}            # sid -> HardwarePWM instance
+servo_channels = {}    # sid -> PWM channel number
 servo_angles = {}
 servo_enabled = {}
 servo_hold = {}
 servo_detach_delay = {}
 servo_detach_timers = {}
 servo_lock = threading.Lock()
+
+# Axis 5 smoothing to avoid sharp mechanical shocks.
+AXIS5_SMOOTH_STEP_DEG = 1.0
+AXIS5_SMOOTH_STEP_SEC = 0.012
+
+
+def _angle_to_pulsewidth_us(angle):
+    """Convert servo angle (-135..+135 deg) to PWM pulse width in microseconds."""
+    angle = max(SERVO_MIN_ANGLE, min(SERVO_MAX_ANGLE, float(angle)))
+    # Linear interpolation: -135° -> 500μs, 0° -> 1500μs, +135° -> 2500μs
+    return SERVO_CENTER_PULSE_US + (angle / 135.0) * 1000.0
+
+
+def _angle_to_duty_cycle(angle):
+    """Convert servo angle to PWM duty cycle percent for a 20 ms frame."""
+    pw_us = _angle_to_pulsewidth_us(angle)
+    return (pw_us / SERVO_PERIOD_US) * 100.0
+
+
+def _set_servo_angle_hw(sid, angle):
+    """Drive the servo to an angle via hardware PWM. Safe to call repeatedly."""
+    pwm = servos.get(sid)
+    if pwm is None:
+        return
+    duty = _angle_to_duty_cycle(angle)
+    try:
+        pwm.change_duty_cycle(duty)
+    except Exception:
+        pass
+
+
+def _set_servo_angle_smooth(sid, start_angle, target_angle):
+    """Move a servo to target in small steps.
+
+    Axis 5 uses this to reduce abrupt motion and protect the mechanism.
+    """
+    start = float(start_angle)
+    target = float(target_angle)
+    if abs(target - start) < 0.001:
+        _set_servo_angle_hw(sid, target)
+        return
+
+    step = AXIS5_SMOOTH_STEP_DEG if target > start else -AXIS5_SMOOTH_STEP_DEG
+    current = start
+    while True:
+        nxt = current + step
+        if (step > 0 and nxt >= target) or (step < 0 and nxt <= target):
+            break
+        _set_servo_angle_hw(sid, nxt)
+        current = nxt
+        time.sleep(AXIS5_SMOOTH_STEP_SEC)
+    _set_servo_angle_hw(sid, target)
 
 
 def _cancel_servo_detach(sid):
@@ -787,10 +913,11 @@ def _schedule_servo_detach(sid, delay_s=None):
                 return
             if servo_hold.get(sid, True):
                 return
-            servo = servos.get(sid)
-            if servo is not None:
+            pwm = servos.get(sid)
+            if pwm is not None:
+                # 0% duty -> no pulse -> servo releases torque (idle).
                 try:
-                    servo.detach()
+                    pwm.change_duty_cycle(0)
                 except Exception:
                     pass
 
@@ -800,38 +927,58 @@ def _schedule_servo_detach(sid, delay_s=None):
     t.start()
 
 
-if GPIO_AVAILABLE and AngularServo is not None:
+def _detect_servo_pwm_chip():
+    """Return the sysfs pwmchip index that drives GPIO 12/13 (RP1 PWM0).
+
+    The kernel does not guarantee a fixed pwmchip number, so match the chip by
+    its hardware peripheral address instead of assuming a fixed index.
+    """
+    base = "/sys/class/pwm"
     try:
-        servos[5] = AngularServo(
-            SERVO5_PIN,
-            min_angle=SERVO_MIN_ANGLE,
-            max_angle=SERVO_MAX_ANGLE,
-            min_pulse_width=SERVO_MIN_PULSE,
-            max_pulse_width=SERVO_MAX_PULSE,
-            frame_width=SERVO_FRAME_WIDTH,
-            initial_angle=0.0,
-        )
-        servos[6] = AngularServo(
-            SERVO6_PIN,
-            min_angle=SERVO_MIN_ANGLE,
-            max_angle=SERVO_MAX_ANGLE,
-            min_pulse_width=SERVO_MIN_PULSE,
-            max_pulse_width=SERVO_MAX_PULSE,
-            frame_width=SERVO_FRAME_WIDTH,
-            initial_angle=0.0,
-        )
-        servo_angles[5] = 0.0
-        servo_angles[6] = 0.0
-        servo_enabled[5] = True
-        servo_enabled[6] = True
-        servo_hold[5] = True
-        servo_hold[6] = True
-        servo_detach_delay[5] = 0.25
-        servo_detach_delay[6] = 0.25
-        servo_detach_timers[5] = None
-        servo_detach_timers[6] = None
+        for name in os.listdir(base):
+            if not name.startswith("pwmchip"):
+                continue
+            try:
+                dev = os.path.realpath(os.path.join(base, name, "device"))
+            except Exception:
+                continue
+            if SERVO_PWM_HW_ADDR in dev:
+                try:
+                    return int(name.replace("pwmchip", ""))
+                except ValueError:
+                    continue
     except Exception:
-        pass  # Servo pins unavailable.
+        pass
+    return SERVO_PWM_CHIP
+
+
+if HW_PWM_AVAILABLE and HardwarePWM is not None:
+    _pwm_chip = _detect_servo_pwm_chip()
+    _servo_setup = {
+        5: SERVO5_CHANNEL,
+        6: SERVO6_CHANNEL,
+    }
+    for _sid, _chan in _servo_setup.items():
+        try:
+            _pwm = HardwarePWM(
+                pwm_channel=_chan, hz=SERVO_PWM_HZ, chip=_pwm_chip
+            )
+            # Start centered at 0 degrees.
+            _pwm.start(_angle_to_duty_cycle(0.0))
+            servos[_sid] = _pwm
+            servo_channels[_sid] = _chan
+            servo_angles[_sid] = 0.0
+            servo_enabled[_sid] = True
+            servo_hold[_sid] = True
+            servo_detach_delay[_sid] = 0.25
+            servo_detach_timers[_sid] = None
+        except Exception as _e:
+            # PWM chip/channel unavailable (overlay not enabled or in use).
+            print(
+                f"[servo] init failed sid={_sid} chan={_chan} "
+                f"chip={_pwm_chip}: {_e}",
+                flush=True,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -960,6 +1107,124 @@ def get_motor(mid):
 
 def get_encoder(mid):
     return encoders.get(mid)
+
+
+# ---- Digital twin joint-state polling ----------------------------------
+# Maps the URDF joints to their position sources. The base joint (Motor1) is
+# FIXED in the URDF, so the twin's joint1..5 map to the remaining axes:
+#   joint1 -> Motor2, joint2 -> Motor3 (PAN), joint3 -> Motor4 (steppers),
+#   joint4 -> Servo5 (TILT), joint5 -> Servo6 (gripper).
+# SIGN flips a joint's direction so the on-screen twin matches the real arm;
+# tune these against the hardware.
+TWIN_JOINT_ENCODERS = {1: 2, 2: 3, 3: 4}   # twin joint -> encoder/motor id
+TWIN_JOINT_SERVOS = {4: 5, 5: 6}           # twin joint -> servo id
+TWIN_JOINT_SIGN = {1: 1.0, 2: 1.0, 3: 1.0, 4: 1.0, 5: 1.0}
+TWIN_POLL_DT = 0.12                              # ~8 Hz encoder cache refresh
+
+
+class TwinPoller:
+    """Caches the 6 joint angles (radians) for the 3D digital-twin viewer.
+
+    The stepper encoders sit on a slow shared 9600-baud bus, so a background
+    thread polls them into a cache and the HTTP endpoint just serves the cache.
+    Polling only runs while the viewer has it enabled to keep the bus free for
+    teach/playback.
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._enabled = False
+        self._thread = None
+        self._stop = threading.Event()
+        self._angles = {f"joint{i}": 0.0 for i in range(1, 6)}
+        self._zero_rev = {mid: 0.0 for mid in TWIN_JOINT_ENCODERS.values()}
+        self._zero_servo = {sid: 0.0 for sid in TWIN_JOINT_SERVOS.values()}
+        self._zeroed = False
+        self._errors = {}
+        self._updated = 0.0
+
+    def start(self):
+        with self._lock:
+            if self._enabled:
+                return
+            self._enabled = True
+            self._stop.clear()
+            self._thread = threading.Thread(target=self._run, daemon=True)
+            self._thread.start()
+
+    def stop(self):
+        with self._lock:
+            self._enabled = False
+        self._stop.set()
+
+    def _read_joint_angles(self):
+        angles = {}
+        errs = {}
+        for ji, mid in TWIN_JOINT_ENCODERS.items():
+            enc = get_encoder(mid)
+            r = enc.read() if enc else {"error": "no encoder"}
+            if r and r.get("error") is None:
+                rev = r.get("output_revolutions", 0.0)
+                rad = (rev - self._zero_rev[mid]) * 2.0 * math.pi * TWIN_JOINT_SIGN[ji]
+                angles[f"joint{ji}"] = rad
+            else:
+                errs[f"joint{ji}"] = (r or {}).get("error", "read failed")
+        for ji, sid in TWIN_JOINT_SERVOS.items():
+            deg = float(servo_angles.get(sid, 0.0)) - self._zero_servo[sid]
+            angles[f"joint{ji}"] = math.radians(deg) * TWIN_JOINT_SIGN[ji]
+        return angles, errs
+
+    def _run(self):
+        while not self._stop.is_set():
+            angles, errs = self._read_joint_angles()
+            with self._lock:
+                self._angles.update(angles)
+                self._errors = errs
+                self._updated = time.time()
+            self._stop.wait(TWIN_POLL_DT)
+
+    def set_zero(self):
+        """Capture the current pose as the twin home (all joints -> 0)."""
+        for mid in TWIN_JOINT_ENCODERS.values():
+            enc = get_encoder(mid)
+            r = enc.read() if enc else None
+            if r and r.get("error") is None:
+                self._zero_rev[mid] = r.get("output_revolutions", 0.0)
+        for sid in TWIN_JOINT_SERVOS.values():
+            self._zero_servo[sid] = float(servo_angles.get(sid, 0.0))
+        # Refresh the cache immediately so the viewer snaps to home.
+        angles, errs = self._read_joint_angles()
+        with self._lock:
+            self._angles.update(angles)
+            self._errors = errs
+            self._updated = time.time()
+        self._zeroed = True
+        return self.snapshot()
+
+    def is_enabled(self):
+        with self._lock:
+            return self._enabled
+
+    def is_zeroed(self):
+        return self._zeroed
+
+    def zero_rev(self, mid):
+        return self._zero_rev.get(mid, 0.0)
+
+    def zero_servo(self, sid):
+        return self._zero_servo.get(sid, 0.0)
+
+    def snapshot(self):
+        with self._lock:
+            return {
+                "enabled": self._enabled,
+                "updated": round(self._updated, 3),
+                "angles": {k: round(v, 5) for k, v in self._angles.items()},
+                "errors": dict(self._errors),
+            }
+
+
+twin_poller = TwinPoller()
 
 
 # ---------------------------------------------------------------------------
@@ -1190,22 +1455,118 @@ arm = RobotArm(motors, encoders)
 
 
 # ---------------------------------------------------------------------------
+# Digital twin: drive the REAL arm from the 3D model (Pose & Send)
+# ---------------------------------------------------------------------------
+# Which twin joints command hardware. joint1-3 are steppers (closed-loop
+# encoder move); joint4 is the tilt servo and joint5 the gripper servo. The
+# base (Motor1) stays fixed.
+TWIN_COMMAND_STEPPERS = {1: 2, 2: 3, 3: 4}   # twin joint -> motor id
+TWIN_COMMAND_SERVOS = {4: 5, 5: 6}           # twin joint -> servo id (tilt, gripper)
+# Per-joint travel limits in RADIANS (mirror the URDF defaults). The UI can
+# override these via POST /twin/limits and the move command clamps to them.
+TWIN_JOINT_LIMITS = {
+    1: [-1.5708, 1.5708],
+    2: [-1.5708, 1.5708],
+    3: [-1.5708, 1.5708],
+    4: [-1.0472, 1.0472],
+    5: [-1.0472, 1.0472],
+}
+_twin_move_lock = threading.Lock()
+_twin_move_state = {"moving": False, "ok": None, "message": "idle"}
+
+
+def _twin_move_status():
+    with _twin_move_lock:
+        return dict(_twin_move_state)
+
+
+def _twin_clamp_rad(ji, rad):
+    lo, hi = TWIN_JOINT_LIMITS.get(ji, [-math.pi, math.pi])
+    return _clamp(float(rad), lo, hi)
+
+
+def _twin_angle_to_counts(ji, mid, rad):
+    """Convert a twin joint angle (rad, relative to home) to encoder counts."""
+    enc = get_encoder(mid)
+    gear = float(getattr(enc, "gear_ratio", 1.0) or 1.0) if enc else 1.0
+    sign = TWIN_JOINT_SIGN.get(ji, 1.0)
+    target_rev = twin_poller.zero_rev(mid) + (rad * sign) / (2.0 * math.pi)
+    return int(round(target_rev * ENCODER_COUNTS_PER_REV * gear))
+
+
+def _twin_execute(angles, speed_frac):
+    # Pause the encoder poller so the move owns the shared 9600-baud bus.
+    resume_poll = twin_poller.is_enabled()
+    if resume_poll:
+        twin_poller.stop()
+    try:
+        stepper_targets = {}
+        for ji, mid in TWIN_COMMAND_STEPPERS.items():
+            key = f"joint{ji}"
+            if key in angles:
+                rad = _twin_clamp_rad(ji, angles[key])
+                stepper_targets[mid] = _twin_angle_to_counts(ji, mid, rad)
+        servo_moves = []
+        for ji, sid in TWIN_COMMAND_SERVOS.items():
+            key = f"joint{ji}"
+            if key in angles:
+                rad = _twin_clamp_rad(ji, angles[key])
+                sign = TWIN_JOINT_SIGN.get(ji, 1.0)
+                deg = twin_poller.zero_servo(sid) + math.degrees(rad) * sign
+                deg = _clamp(deg, float(SERVO_MIN_ANGLE), float(SERVO_MAX_ANGLE))
+                servo_moves.append((sid, deg))
+
+        for sid, deg in servo_moves:
+            prev = float(servo_angles.get(sid, 0.0))
+            _set_servo_angle_smooth(sid, prev, deg)
+            servo_angles[sid] = deg
+
+        ok = True
+        if stepper_targets:
+            ok = arm.move_to_pose(stepper_targets, speed_frac=speed_frac)
+        with _twin_move_lock:
+            _twin_move_state.update(
+                moving=False, ok=bool(ok),
+                message="move complete" if ok
+                else "move incomplete (check encoders/limits)")
+    except Exception as exc:  # noqa: BLE001 - report any hardware fault
+        with _twin_move_lock:
+            _twin_move_state.update(moving=False, ok=False,
+                                    message=f"error: {exc}")
+    finally:
+        if resume_poll:
+            twin_poller.start()
+
+
+def twin_move(angles, speed_frac):
+    """Start a Pose-&-Send move toward the given twin joint angles (radians)."""
+    if not twin_poller.is_zeroed():
+        return False, "set home first (press Set home with the arm at zero)"
+    st = arm.get_state()
+    if st.get("playing") or st.get("freedrive"):
+        return False, "arm busy (playback or free-drive active)"
+    with _twin_move_lock:
+        if _twin_move_state["moving"]:
+            return False, "already moving"
+        _twin_move_state.update(moving=True, ok=None, message="moving\u2026")
+    arm._stop.clear()
+    threading.Thread(target=_twin_execute, args=(dict(angles), speed_frac),
+                     daemon=True).start()
+    return True, "moving"
+
+
+# ---------------------------------------------------------------------------
 # Camera + on-device emotion detection
 # ---------------------------------------------------------------------------
 CAMERA_DEVICE = os.environ.get("MIRO_CAMERA_DEVICE", "/dev/video0")
 CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
+# Frame-rate ceiling while any stepper is moving. Lower = less CPU contention
+# with the software-timed step PWM, which keeps the motors from vibrating.
+FACE_TRACK_CAM_FPS_BUSY = float(os.environ.get("FACE_TRACK_CAM_FPS_BUSY", "6"))
 _MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 FER_MODEL_PATH = os.path.join(_MODELS_DIR, "emotion-ferplus-8.onnx")
 YUNET_MODEL_PATH = os.path.join(_MODELS_DIR, "face_detection_yunet_2023mar.onnx")
-
-# Object detection (YOLOv4-tiny, COCO 80 classes, run via cv2.dnn DetectionModel).
-YOLO_CFG_PATH = os.path.join(_MODELS_DIR, "yolov4-tiny.cfg")
-YOLO_WEIGHTS_PATH = os.path.join(_MODELS_DIR, "yolov4-tiny.weights")
-YOLO_NAMES_PATH = os.path.join(_MODELS_DIR, "coco.names")
-OBJ_INPUT_SIZE = 224          # 224 vs 320 cuts inference ~50% with minor accuracy loss
-OBJ_CONF_THRESHOLD = 0.45
-OBJ_NMS_THRESHOLD = 0.4
 
 # FER+ raw output order (8 classes).
 _FERPLUS_LABELS = [
@@ -1251,8 +1612,6 @@ class EmotionCamera:
         self.width = width
         self.height = height
         self.available = CV2_AVAILABLE and os.path.exists(FER_MODEL_PATH)
-        self.obj_available = (CV2_AVAILABLE and os.path.exists(YOLO_WEIGHTS_PATH)
-                              and os.path.exists(YOLO_CFG_PATH))
         self._lock = threading.Lock()
         self._thread = None
         self._running = False
@@ -1264,15 +1623,8 @@ class EmotionCamera:
         self._result = self._empty_result()
         self._last_active = 0.0
         self._fps = 0.0
-        # object detection
-        self._frame = None            # latest raw frame for the object thread
-        self._obj_model = None
-        self._obj_classes = []
-        self._objects = []
-        self._obj_enabled = False
-        self._obj_thread = None
-        self._obj_ms = 0.0
         self._emo_enabled = True    # emotion detection on by default
+        self._last_scores = None    # reused when emotion inference is skipped
 
     @staticmethod
     def _empty_result():
@@ -1361,116 +1713,10 @@ class EmotionCamera:
         total = sum(ui.values()) or 1.0
         return {k: v / total for k, v in ui.items()}
 
-    # -- object detection ------------------------------------------------
-    def _load_object_model(self):
-        if self._obj_model is not None:
-            return
-        if not (os.path.exists(YOLO_WEIGHTS_PATH) and os.path.exists(YOLO_CFG_PATH)):
-            return
-        net = cv2.dnn.readNetFromDarknet(YOLO_CFG_PATH, YOLO_WEIGHTS_PATH)
-        net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
-        net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
-        model = cv2.dnn.DetectionModel(net)
-        model.setInputParams(size=(OBJ_INPUT_SIZE, OBJ_INPUT_SIZE),
-                             scale=1.0 / 255.0, swapRB=True)
-        self._obj_model = model
-        if os.path.exists(YOLO_NAMES_PATH):
-            with open(YOLO_NAMES_PATH) as f:
-                self._obj_classes = [ln.strip() for ln in f if ln.strip()]
-
-    def _detect_objects(self, frame):
-        """Run YOLO on a frame, return a list of object dicts (sorted by conf)."""
-        classes, confs, boxes = self._obj_model.detect(
-            frame, OBJ_CONF_THRESHOLD, OBJ_NMS_THRESHOLD)
-        classes = np.array(classes).reshape(-1)
-        confs = np.array(confs).reshape(-1)
-        boxes = np.array(boxes).reshape(-1, 4) if len(boxes) else np.empty((0, 4))
-        w_f, h_f = float(self.width), float(self.height)
-        objs = []
-        for cid, conf, box in zip(classes, confs, boxes):
-            x, y, w, h = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
-            cx, cy = x + w / 2.0, y + h / 2.0
-            cid = int(cid)
-            label = self._obj_classes[cid] if cid < len(self._obj_classes) else str(cid)
-            objs.append({
-                "label": label,
-                "confidence": round(float(conf), 3),
-                "box": [x, y, w, h],
-                "center": [int(round(cx)), int(round(cy))],
-                # offset from frame centre, normalised to -1..1 (feed to motors)
-                "offset": [round((cx / w_f) * 2.0 - 1.0, 3),
-                           round((cy / h_f) * 2.0 - 1.0, 3)],
-                "area": w * h,
-            })
-        objs.sort(key=lambda o: o["confidence"], reverse=True)
-        return objs
-
-    def _obj_run(self):
-        try:
-            self._load_object_model()
-        except Exception:
-            self._obj_model = None
-        if self._obj_model is None:
-            self._obj_enabled = False
-            return
-        while self._running and self._obj_enabled:
-            with self._lock:
-                frame = None if self._frame is None else self._frame.copy()
-            if frame is None:
-                time.sleep(0.05)
-                continue
-            t0 = time.time()
-            try:
-                objs = self._detect_objects(frame)
-            except Exception:
-                objs = []
-            elapsed = time.time() - t0
-            with self._lock:
-                self._objects = objs
-                self._obj_ms = elapsed * 1000.0
-            # throttle to ~3 fps max (0.33 s budget) to keep CPU load manageable
-            leftover = 0.33 - elapsed
-            if leftover > 0:
-                time.sleep(leftover)
-        with self._lock:
-            self._objects = []
-
     def set_emotion(self, on):
         """Enable/disable face + emotion classification."""
         self._emo_enabled = bool(on)
         return self._emo_enabled
-
-    def set_objects(self, on):
-        """Enable/disable the object-detection thread."""
-        on = bool(on) and self.obj_available
-        self._obj_enabled = on
-        if on:
-            self.ensure_started()
-            with self._lock:
-                alive = self._obj_thread is not None and self._obj_thread.is_alive()
-                if not alive:
-                    self._obj_thread = threading.Thread(
-                        target=self._obj_run, daemon=True)
-                    self._obj_thread.start()
-        return self._obj_enabled
-
-    def objects_result(self):
-        self.ensure_started()
-        with self._lock:
-            objs = list(self._objects)
-            enabled = self._obj_enabled
-            running = self._running
-            obj_ms = self._obj_ms
-        return {
-            "available": self.obj_available,
-            "enabled": enabled,
-            "live": running and enabled,
-            "frame": [self.width, self.height],
-            "count": len(objs),
-            "objects": objs,
-            "primary": objs[0] if objs else None,
-            "infer_ms": round(obj_ms, 1),
-        }
 
     # -- worker ---------------------------------------------------------
     def _run(self):
@@ -1499,9 +1745,6 @@ class EmotionCamera:
                 time.sleep(0.05)
                 continue
             fail = 0
-            if self._obj_enabled:
-                with self._lock:
-                    self._frame = frame.copy()
             t0 = time.time()
             emo_on = self._emo_enabled
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if emo_on else None
@@ -1511,7 +1754,21 @@ class EmotionCamera:
                 try:
                     box = self._detect_face(frame, gray)
                     if box is not None and self._emo_net is not None:
-                        scores = self._classify(gray, box)
+                        # While a stepper is moving, skip the heavier FER+
+                        # emotion inference and reuse the last scores so the
+                        # software step-PWM keeps clean timing (less vibration).
+                        # The face box is still detected every frame for
+                        # tracking.
+                        try:
+                            busy = any(getattr(m, "current_speed", 0) > 0
+                                       for m in motors.values())
+                        except Exception:
+                            busy = False
+                        if busy and self._last_scores is not None:
+                            scores = self._last_scores
+                        else:
+                            scores = self._classify(gray, box)
+                            self._last_scores = scores
                 except Exception:
                     box = None
                     scores = None
@@ -1527,20 +1784,6 @@ class EmotionCamera:
                                   (x + max(120, w), y), (23, 31, 12), -1)
                     cv2.putText(frame, label, (x + 6, max(14, y - 6)),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (194, 230, 105), 2)
-
-            if self._obj_enabled:
-                with self._lock:
-                    objs = list(self._objects)
-                for o in objs:
-                    ox, oy, ow, oh = o["box"]
-                    cv2.rectangle(frame, (ox, oy), (ox + ow, oy + oh),
-                                  (0, 170, 255), 2)
-                    olabel = "%s %d%%" % (o["label"],
-                                          round(o["confidence"] * 100))
-                    cv2.rectangle(frame, (ox, max(0, oy - 20)),
-                                  (ox + max(90, ow), oy), (20, 30, 40), -1)
-                    cv2.putText(frame, olabel, (ox + 4, max(13, oy - 5)),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 170, 255), 2)
 
             n += 1
             if time.time() - t_fps >= 1.0:
@@ -1571,8 +1814,16 @@ class EmotionCamera:
                         "dominant": None, "infer_ms": round(infer_ms, 1),
                         "fps": round(self._fps, 1),
                     }
-            # slow to 10 fps when object detection is running to share CPU
-            target_fps = 10.0 if self._obj_enabled else 15.0
+            target_fps = 15.0
+            # While a stepper is actively moving (jog or face tracking) the
+            # software-PWM step pulses are sensitive to CPU contention, so cap
+            # the camera frame rate harder to leave the cores free and keep the
+            # motors smooth.
+            try:
+                if any(getattr(m, "current_speed", 0) > 0 for m in motors.values()):
+                    target_fps = min(target_fps, FACE_TRACK_CAM_FPS_BUSY)
+            except Exception:
+                pass
             frame_interval = 1.0 / target_fps
             dt = time.time() - t0
             if dt < frame_interval:
@@ -1582,8 +1833,6 @@ class EmotionCamera:
             self._running = False
             self._jpeg = None
             self._result = self._empty_result()
-            self._frame = None
-            self._objects = []
         try:
             if self._cap:
                 self._cap.release()
@@ -1632,6 +1881,428 @@ class EmotionCamera:
 
 
 camera = EmotionCamera()
+
+
+# ---------------------------------------------------------------------------
+# Face tracking (camera on robot head)
+#   - Horizontal error drives the pan motor (Motor 3)
+#   - Vertical error drives Axis 5 servo (tilt)
+# ---------------------------------------------------------------------------
+FACE_TRACK_MOTOR_ID = int(os.environ.get("FACE_TRACK_MOTOR_ID", "3"))
+FACE_TRACK_SERVO_ID = int(os.environ.get("FACE_TRACK_SERVO_ID", "5"))
+FACE_TRACK_LOOP_DT = float(os.environ.get("FACE_TRACK_LOOP_DT", "0.06"))
+FACE_TRACK_X_DEADZONE_PX = int(os.environ.get("FACE_TRACK_X_DEADZONE_PX", "45"))
+FACE_TRACK_X_START_PX = int(os.environ.get("FACE_TRACK_X_START_PX", "60"))
+FACE_TRACK_Y_DEADZONE_PX = int(os.environ.get("FACE_TRACK_Y_DEADZONE_PX", "35"))
+# Start tilt only once the vertical error exceeds this (must be > deadzone) so
+# the head does not chatter up/down around the centred position (hysteresis).
+FACE_TRACK_Y_START_PX = int(os.environ.get("FACE_TRACK_Y_START_PX", "55"))
+# Low-pass the vertical error to reject per-frame jitter that otherwise drives
+# tilt oscillation, same idea as the pan X filter.
+FACE_TRACK_Y_FILTER_ALPHA = float(os.environ.get("FACE_TRACK_Y_FILTER_ALPHA", "0.4"))
+FACE_TRACK_MIN_SPS = int(os.environ.get("FACE_TRACK_MIN_SPS", "260"))
+FACE_TRACK_MAX_SPS = int(os.environ.get("FACE_TRACK_MAX_SPS", "1400"))
+FACE_TRACK_KP_SPS_PER_PX = float(os.environ.get("FACE_TRACK_KP_SPS_PER_PX", "3.2"))
+# Absolute ceiling the user speed multiplier can never push pan beyond, so a
+# high "speed" setting cannot command an unsafe step rate for the motor.
+FACE_TRACK_MAX_SPS_HARD = int(os.environ.get("FACE_TRACK_MAX_SPS_HARD", "2000"))
+# Only push a new pan speed to the motor when it changes by at least this many
+# steps/s. Constant micro-adjustments rewrite the PWM frequency every loop and
+# cause the pulse train to stutter (visible as bouncing), so we quantize.
+FACE_TRACK_SPS_STEP = int(os.environ.get("FACE_TRACK_SPS_STEP", "60"))
+FACE_TRACK_X_FILTER_ALPHA = float(os.environ.get("FACE_TRACK_X_FILTER_ALPHA", "0.35"))
+FACE_TRACK_PAN_SIGN = int(os.environ.get("FACE_TRACK_PAN_SIGN", "1"))
+FACE_TRACK_TILT_SIGN = int(os.environ.get("FACE_TRACK_TILT_SIGN", "-1"))
+FACE_TRACK_TILT_KP_DEG_PER_PX = float(os.environ.get("FACE_TRACK_TILT_KP_DEG_PER_PX", "0.03"))
+# Hard cap on how many degrees the tilt servo may move per control loop so a
+# large vertical error cannot fling the head; keeps tilt smooth and gentle.
+# The user tilt-speed multiplier scales THIS slew-rate cap (not the gain) so a
+# faster setting reaches a far face quicker without overshooting near centre.
+FACE_TRACK_TILT_MAX_STEP_DEG = float(os.environ.get("FACE_TRACK_TILT_MAX_STEP_DEG", "1.8"))
+FACE_TRACK_TILT_MIN = float(os.environ.get("FACE_TRACK_TILT_MIN", "-85"))
+FACE_TRACK_TILT_MAX = float(os.environ.get("FACE_TRACK_TILT_MAX", "85"))
+FACE_TRACK_LOST_HOLD_S = float(os.environ.get("FACE_TRACK_LOST_HOLD_S", "0.8"))
+FACE_TRACK_PREP_SPEED = int(os.environ.get("FACE_TRACK_PREP_SPEED", "400"))
+FACE_TRACK_PREP_ACCEL = int(os.environ.get("FACE_TRACK_PREP_ACCEL", "2500"))
+# User-selectable speed multipliers (1.0 = the tuned defaults above). The pan
+# multiplier scales both the proportional gain and the max step rate; the tilt
+# multiplier scales the tilt gain and per-loop cap. They are clamped to the
+# [MIN, MAX] range so the UI slider cannot push the rig past safe limits.
+FACE_TRACK_SPEED_MIN = float(os.environ.get("FACE_TRACK_SPEED_MIN", "0.25"))
+FACE_TRACK_SPEED_MAX = float(os.environ.get("FACE_TRACK_SPEED_MAX", "2.5"))
+FACE_TRACK_PAN_SPEED = float(os.environ.get("FACE_TRACK_PAN_SPEED", "1.0"))
+FACE_TRACK_TILT_SPEED = float(os.environ.get("FACE_TRACK_TILT_SPEED", "1.0"))
+
+
+class FaceTracker:
+    """Closed-loop face tracker driven by the camera face box."""
+
+    def __init__(self, camera):
+        self.camera = camera
+        self.enabled = False
+        self._running = False
+        self._thread = None
+        self._lock = threading.Lock()
+        self._state = {
+            "live": False,
+            "has_face": False,
+            "face_center": None,
+            "error_px": [0, 0],
+            "motor_id": FACE_TRACK_MOTOR_ID,
+            "servo_id": FACE_TRACK_SERVO_ID,
+            "motor_ready": False,
+            "servo_ready": False,
+            "motor_sps": 0,
+            "servo_angle": 0.0,
+            "updated": 0.0,
+            "error": None,
+        }
+        self._pan_active = False
+        self._pan_err_f = 0.0
+        self._pan_dir = None
+        self._pan_last_sps = 0
+        self._saved_motor_state = None
+        # Filtered vertical error + tilt hysteresis state (anti-oscillation).
+        self._tilt_err_f = 0.0
+        self._tilt_active = False
+        # Runtime tilt travel limits. Default to the safe tracker range but the
+        # UI "Hard Limit" field overrides these so tilt can never drive the
+        # servo into its mechanical end-stops.
+        self._tilt_min = float(FACE_TRACK_TILT_MIN)
+        self._tilt_max = float(FACE_TRACK_TILT_MAX)
+        self._state["tilt_min"] = self._tilt_min
+        self._state["tilt_max"] = self._tilt_max
+        # User-selectable speed multipliers (clamped). 1.0 == tuned defaults.
+        self._pan_speed = self._clamp_speed(FACE_TRACK_PAN_SPEED)
+        self._tilt_speed = self._clamp_speed(FACE_TRACK_TILT_SPEED)
+        self._state["pan_speed"] = self._pan_speed
+        self._state["tilt_speed"] = self._tilt_speed
+
+    @staticmethod
+    def _clamp_speed(value):
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            v = 1.0
+        return round(max(FACE_TRACK_SPEED_MIN, min(FACE_TRACK_SPEED_MAX, v)), 3)
+
+    def set_speed(self, pan=None, tilt=None):
+        """Set the pan/tilt speed multipliers (None leaves a value unchanged)."""
+        with self._lock:
+            if pan is not None:
+                self._pan_speed = self._clamp_speed(pan)
+                self._state["pan_speed"] = self._pan_speed
+            if tilt is not None:
+                self._tilt_speed = self._clamp_speed(tilt)
+                self._state["tilt_speed"] = self._tilt_speed
+            return {
+                "pan_speed": self._pan_speed,
+                "tilt_speed": self._tilt_speed,
+            }
+
+    def set_tilt_limits(self, min_deg=None, max_deg=None):
+        """Set the tilt travel limits (degrees), clamped to the servo's
+        physical range and kept ordered. None leaves a value unchanged."""
+        with self._lock:
+            lo = self._tilt_min if min_deg is None else min_deg
+            hi = self._tilt_max if max_deg is None else max_deg
+            try:
+                lo = float(lo)
+                hi = float(hi)
+            except (TypeError, ValueError):
+                return {"tilt_min": self._tilt_min, "tilt_max": self._tilt_max}
+            lo = max(float(SERVO_MIN_ANGLE), min(float(SERVO_MAX_ANGLE), lo))
+            hi = max(float(SERVO_MIN_ANGLE), min(float(SERVO_MAX_ANGLE), hi))
+            if lo > hi:
+                lo, hi = hi, lo
+            self._tilt_min = round(lo, 2)
+            self._tilt_max = round(hi, 2)
+            self._state["tilt_min"] = self._tilt_min
+            self._state["tilt_max"] = self._tilt_max
+            return {"tilt_min": self._tilt_min, "tilt_max": self._tilt_max}
+
+    def _save_motor_state_if_needed(self, motor):
+        if motor is None or self._saved_motor_state is not None:
+            return
+        self._saved_motor_state = {
+            "speed": int(getattr(motor, "speed", DEFAULT_SPEED)),
+            "direction": getattr(motor, "direction", "cw"),
+            "accel": int(getattr(motor, "accel", DEFAULT_ACCEL)),
+            "enabled": bool(getattr(motor, "enabled", False)),
+        }
+
+    def _restore_motor_state(self, motor):
+        if motor is None or self._saved_motor_state is None:
+            return
+        try:
+            motor.set_speed(self._saved_motor_state.get("speed", DEFAULT_SPEED))
+        except Exception:
+            pass
+        try:
+            motor.set_direction(self._saved_motor_state.get("direction", "cw"))
+        except Exception:
+            pass
+        try:
+            motor.set_accel(self._saved_motor_state.get("accel", DEFAULT_ACCEL))
+        except Exception:
+            pass
+        try:
+            if not self._saved_motor_state.get("enabled", False):
+                motor.disable(soft=True)
+        except Exception:
+            pass
+        self._saved_motor_state = None
+
+    def _prepare_outputs(self):
+        motor_ready = False
+        servo_ready = False
+
+        m = motors.get(FACE_TRACK_MOTOR_ID)
+        if m is not None:
+            try:
+                self._save_motor_state_if_needed(m)
+                m.set_accel(FACE_TRACK_PREP_ACCEL)
+                m.set_speed(FACE_TRACK_PREP_SPEED)
+                m.enable()
+                m.hold()
+                motor_ready = True
+            except Exception:
+                motor_ready = False
+
+        if FACE_TRACK_SERVO_ID in servos:
+            with servo_lock:
+                try:
+                    servo_enabled[FACE_TRACK_SERVO_ID] = True
+                    _cancel_servo_detach(FACE_TRACK_SERVO_ID)
+                    angle = float(servo_angles.get(FACE_TRACK_SERVO_ID, 0.0))
+                    _set_servo_angle_hw(FACE_TRACK_SERVO_ID, angle)
+                    servo_ready = True
+                except Exception:
+                    servo_ready = False
+
+        self._set_state(motor_ready=motor_ready, servo_ready=servo_ready)
+
+    def start(self):
+        with self._lock:
+            self.enabled = True
+        self._prepare_outputs()
+        with self._lock:
+            if self._running:
+                return True
+            self._running = True
+            self._thread = threading.Thread(target=self._run, daemon=True)
+            self._thread.start()
+        return True
+
+    def stop(self):
+        with self._lock:
+            self.enabled = False
+        self._stop_outputs()
+        return True
+
+    def status(self):
+        with self._lock:
+            st = dict(self._state)
+            st["enabled"] = bool(self.enabled)
+        return st
+
+    def _set_state(self, **kwargs):
+        with self._lock:
+            self._state.update(kwargs)
+            self._state["updated"] = round(time.time(), 3)
+
+    def _stop_outputs(self, restore_motor=True, mark_not_ready=True):
+        m = motors.get(FACE_TRACK_MOTOR_ID)
+        if m is not None:
+            try:
+                m.hold()
+            except Exception:
+                pass
+            if restore_motor:
+                self._restore_motor_state(m)
+        self._pan_active = False
+        self._pan_err_f = 0.0
+        self._pan_dir = None
+        self._pan_last_sps = 0
+        self._tilt_err_f = 0.0
+        self._tilt_active = False
+        if mark_not_ready:
+            self._set_state(motor_ready=False, servo_ready=bool(
+                FACE_TRACK_SERVO_ID in servos and servo_enabled.get(FACE_TRACK_SERVO_ID, False)
+            ))
+
+    def _run(self):
+        last_face_ts = 0.0
+        was_enabled = False
+        while True:
+            with self._lock:
+                running = self._running
+                enabled = self.enabled
+                pan_speed = self._pan_speed
+                tilt_speed = self._tilt_speed
+                tilt_min = self._tilt_min
+                tilt_max = self._tilt_max
+            if not running:
+                break
+
+            if not enabled:
+                # Release the outputs ONCE on the enabled->disabled transition,
+                # then idle. Calling _stop_outputs() every loop would keep
+                # asserting hold() on the tracked motor, which permanently
+                # blocks manual jog and any other use of that motor.
+                if was_enabled:
+                    self._set_state(live=False, has_face=False, motor_sps=0)
+                    self._stop_outputs()
+                    was_enabled = False
+                time.sleep(FACE_TRACK_LOOP_DT)
+                continue
+            was_enabled = True
+
+            # Ensure face detector stays on while tracking.
+            self.camera.set_emotion(True)
+            d = self.camera.latest_result()
+            box = d.get("box")
+            has_face = d.get("face") is not None and isinstance(box, list) and len(box) == 4
+            if has_face:
+                last_face_ts = time.time()
+                x, y, w, h = [int(v) for v in box]
+                cx = x + (w // 2)
+                cy = y + (h // 2)
+                ex = int(cx - (CAMERA_WIDTH // 2))
+                ey = int(cy - (CAMERA_HEIGHT // 2))
+
+                # Pan with Motor 1 using momentary jog control.
+                m = motors.get(FACE_TRACK_MOTOR_ID)
+                motor_sps = 0
+                if m is not None:
+                    # Filter pixel jitter and add hysteresis so pan does not
+                    # chatter between hold/move near the frame center.
+                    alpha = max(0.0, min(1.0, FACE_TRACK_X_FILTER_ALPHA))
+                    self._pan_err_f = (1.0 - alpha) * self._pan_err_f + alpha * float(ex)
+                    ex_cmd = int(round(self._pan_err_f))
+
+                    stop_zone = max(0, int(FACE_TRACK_X_DEADZONE_PX))
+                    start_zone = max(stop_zone + 1, int(FACE_TRACK_X_START_PX))
+
+                    if self._pan_active:
+                        should_move = abs(ex_cmd) > stop_zone
+                    else:
+                        should_move = abs(ex_cmd) >= start_zone
+
+                    if not should_move:
+                        if self._pan_active:
+                            try:
+                                m.hold()
+                            except Exception:
+                                pass
+                        self._pan_active = False
+                        self._pan_dir = None
+                        self._pan_last_sps = 0
+                    else:
+                        try:
+                            self._save_motor_state_if_needed(m)
+                            direction = "cw" if (ex_cmd * FACE_TRACK_PAN_SIGN) > 0 else "ccw"
+                            # Apply the user pan-speed multiplier to both the
+                            # gain and the max step rate (clamped to a hard
+                            # ceiling so the slider can never overspeed Motor 3).
+                            kp = FACE_TRACK_KP_SPS_PER_PX * pan_speed
+                            max_sps = min(
+                                FACE_TRACK_MAX_SPS_HARD,
+                                int(FACE_TRACK_MAX_SPS * pan_speed),
+                            )
+                            motor_sps = int(min(
+                                max_sps,
+                                max(FACE_TRACK_MIN_SPS,
+                                    FACE_TRACK_MIN_SPS + abs(ex_cmd) * kp),
+                            ))
+                            if not self._pan_active:
+                                # Engage ONCE on the start transition. Calling
+                                # enable()/run_pulses() every loop re-sets the
+                                # pause flag and races the worker thread, which
+                                # makes the motor bounce. So we only do it here.
+                                m.set_direction(direction)
+                                m.set_speed(motor_sps)
+                                m.enable()
+                                m.run_pulses()
+                                self._pan_active = True
+                                self._pan_dir = direction
+                                self._pan_last_sps = motor_sps
+                            else:
+                                # Already streaming pulses: only nudge the
+                                # direction or speed when they actually change
+                                # enough, leaving the pulse train untouched
+                                # otherwise so it stays rock-solid.
+                                if direction != self._pan_dir:
+                                    m.set_direction(direction)
+                                    self._pan_dir = direction
+                                if abs(motor_sps - self._pan_last_sps) >= FACE_TRACK_SPS_STEP:
+                                    m.set_speed(motor_sps)
+                                    self._pan_last_sps = motor_sps
+                                else:
+                                    motor_sps = self._pan_last_sps
+                        except Exception as exc:
+                            self._set_state(error=str(exc))
+
+                # Tilt with Axis 5 servo.
+                servo_angle = servo_angles.get(FACE_TRACK_SERVO_ID, 0.0)
+                if FACE_TRACK_SERVO_ID in servos and servo_enabled.get(FACE_TRACK_SERVO_ID, False):
+                    # Low-pass the vertical error to reject per-frame jitter.
+                    ya = max(0.0, min(1.0, FACE_TRACK_Y_FILTER_ALPHA))
+                    self._tilt_err_f = (1.0 - ya) * self._tilt_err_f + ya * float(ey)
+                    eyf = self._tilt_err_f
+
+                    stop_zone = max(0, int(FACE_TRACK_Y_DEADZONE_PX))
+                    start_zone = max(stop_zone + 1, int(FACE_TRACK_Y_START_PX))
+                    if self._tilt_active:
+                        tilt_should_move = abs(eyf) > stop_zone
+                    else:
+                        tilt_should_move = abs(eyf) >= start_zone
+
+                    if tilt_should_move:
+                        self._tilt_active = True
+                        # Fixed proportional gain keeps the loop stable; the
+                        # user tilt-speed only raises the per-loop slew cap so a
+                        # far face is reached faster WITHOUT overshooting near
+                        # centre (overshoot was the up/down oscillation).
+                        delta = -FACE_TRACK_TILT_SIGN * eyf * FACE_TRACK_TILT_KP_DEG_PER_PX
+                        tilt_cap = FACE_TRACK_TILT_MAX_STEP_DEG * tilt_speed
+                        if delta > tilt_cap:
+                            delta = tilt_cap
+                        elif delta < -tilt_cap:
+                            delta = -tilt_cap
+                        # Clamp to the user Hard Limit so tilt can never crash
+                        # the servo into its mechanical end-stops.
+                        lo = min(tilt_min, tilt_max)
+                        hi = max(tilt_min, tilt_max)
+                        target = max(lo, min(hi, servo_angle + delta))
+                        with servo_lock:
+                            _cancel_servo_detach(FACE_TRACK_SERVO_ID)
+                            _set_servo_angle_hw(FACE_TRACK_SERVO_ID, target)
+                            servo_angles[FACE_TRACK_SERVO_ID] = target
+                            servo_angle = target
+                    else:
+                        self._tilt_active = False
+
+                self._set_state(
+                    live=True,
+                    has_face=True,
+                    face_center=[cx, cy],
+                    error_px=[ex, ey],
+                    motor_sps=int(motor_sps),
+                    servo_angle=round(float(servo_angle), 2),
+                    error=None,
+                )
+            else:
+                if (time.time() - last_face_ts) > FACE_TRACK_LOST_HOLD_S:
+                    # Keep tracker outputs prepared while face is temporarily
+                    # lost so re-acquisition resumes immediately.
+                    self._stop_outputs(restore_motor=False, mark_not_ready=False)
+                self._set_state(live=True, has_face=False, face_center=None, error_px=[0, 0], motor_sps=0)
+
+            time.sleep(FACE_TRACK_LOOP_DT)
+
+
+face_tracker = FaceTracker(camera)
 
 
 class EmotionRings:
@@ -2059,26 +2730,6 @@ def camera_snapshot():
     return Response(jpg, mimetype="image/jpeg")
 
 
-@app.route("/objects/latest")
-def objects_latest():
-    """Latest object-detection result.
-
-    Each object carries its pixel ``box``/``center`` plus a normalised
-    ``offset`` (-1..1 from the frame centre) intended to drive the motors for
-    physical tracking. ``primary`` is the highest-confidence object. Shape::
-
-        {
-          "available": true, "enabled": true, "live": true,
-          "frame": [640, 480], "count": 2, "infer_ms": 180.0,
-          "objects": [{"label": "person", "confidence": 0.91,
-                       "box": [x, y, w, h], "center": [cx, cy],
-                       "offset": [nx, ny], "area": 12345}, ...],
-          "primary": { ...same as an object... }
-        }
-    """
-    return jsonify(camera.objects_result())
-
-
 @app.route("/emotion/enable", methods=["POST"])
 def emotion_enable():
     """Turn emotion detection on or off ({"on": true|false})."""
@@ -2093,7 +2744,7 @@ def emotion_rings():
     """Get or set emotion-ring animation state."""
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
-        on = bool(data.get("on", True))
+        on = _as_bool(data.get("on", True), default=True)
         enabled = rings.set_enabled(on)
         st = rings.status()
         st["enabled"] = enabled
@@ -2110,13 +2761,134 @@ def emotion_rings_test():
     return jsonify({"started": started, "available": rings.available})
 
 
-@app.route("/objects/enable", methods=["POST"])
-def objects_enable():
-    """Turn the object-detection thread on or off (``{"on": true|false}``)."""
+@app.route("/face_tracking/status")
+def face_tracking_status():
+    return jsonify(face_tracker.status())
+
+
+@app.route("/face_tracking/enable", methods=["POST"])
+def face_tracking_enable():
+    data = request.get_json(silent=True)
+    on_raw = None
+    if isinstance(data, dict):
+        on_raw = data.get("on")
+    if on_raw is None:
+        on_raw = request.values.get("on")
+    on = _as_bool(on_raw, default=False)
+    if on:
+        face_tracker.start()
+    else:
+        face_tracker.stop()
+    st = face_tracker.status()
+    return jsonify({"enabled": st.get("enabled", False), "status": st})
+
+
+@app.route("/face_tracking/speed", methods=["POST"])
+def face_tracking_speed():
+    data = request.get_json(silent=True)
+    pan = tilt = None
+    if isinstance(data, dict):
+        pan = data.get("pan")
+        tilt = data.get("tilt")
+    if pan is None:
+        pan = request.values.get("pan")
+    if tilt is None:
+        tilt = request.values.get("tilt")
+    result = face_tracker.set_speed(pan=pan, tilt=tilt)
+    return jsonify({"status": "ok", **result})
+
+
+@app.route("/face_tracking/tilt_limits", methods=["POST"])
+def face_tracking_tilt_limits():
+    data = request.get_json(silent=True)
+    lo = hi = None
+    if isinstance(data, dict):
+        lo = data.get("min")
+        hi = data.get("max")
+    if lo is None:
+        lo = request.values.get("min")
+    if hi is None:
+        hi = request.values.get("max")
+    result = face_tracker.set_tilt_limits(min_deg=lo, max_deg=hi)
+    return jsonify({"status": "ok", **result})
+
+
+@app.route("/joint_states")
+def joint_states():
+    return jsonify(twin_poller.snapshot())
+
+
+@app.route("/twin/enable", methods=["POST"])
+def twin_enable():
+    data = request.get_json(silent=True)
+    on_raw = data.get("on") if isinstance(data, dict) else None
+    if on_raw is None:
+        on_raw = request.values.get("on")
+    on = _as_bool(on_raw, default=False)
+    if on:
+        twin_poller.start()
+    else:
+        twin_poller.stop()
+    return jsonify(twin_poller.snapshot())
+
+
+@app.route("/twin/zero", methods=["POST"])
+def twin_zero():
+    return jsonify({"status": "ok", **twin_poller.set_zero()})
+
+
+@app.route("/twin/config")
+def twin_config():
+    """Travel limits (radians) and which twin joints command hardware."""
+    commandable = sorted(list(TWIN_COMMAND_STEPPERS) + list(TWIN_COMMAND_SERVOS))
+    return jsonify({
+        "limits": {f"joint{ji}": v for ji, v in TWIN_JOINT_LIMITS.items()},
+        "commandable": [f"joint{ji}" for ji in commandable],
+    })
+
+
+@app.route("/twin/limits", methods=["POST"])
+def twin_set_limits():
     data = request.get_json(silent=True) or {}
-    on = bool(data.get("on", True))
-    enabled = camera.set_objects(on)
-    return jsonify({"enabled": enabled, "available": camera.obj_available})
+    lims = data.get("limits") or {}
+    for key, val in lims.items():
+        try:
+            ji = int(str(key).replace("joint", ""))
+            lo, hi = float(val[0]), float(val[1])
+            if lo > hi:
+                lo, hi = hi, lo
+            TWIN_JOINT_LIMITS[ji] = [lo, hi]
+        except (ValueError, TypeError, IndexError):
+            continue
+    return jsonify({"limits": {f"joint{ji}": v
+                               for ji, v in TWIN_JOINT_LIMITS.items()}})
+
+
+@app.route("/twin/move", methods=["POST"])
+def twin_move_route():
+    data = request.get_json(silent=True) or {}
+    angles = data.get("angles") or {}
+    speed = _clamp(float(data.get("speed", 0.4) or 0.4), 0.05, 1.0)
+    started, msg = twin_move(angles, speed)
+    return jsonify({"started": started, "message": msg, **_twin_move_status()})
+
+
+@app.route("/twin/move_status")
+def twin_move_status_route():
+    return jsonify(_twin_move_status())
+
+
+@app.route("/twin/stop", methods=["POST"])
+def twin_stop_route():
+    arm._stop.set()
+    with _twin_move_lock:
+        _twin_move_state.update(moving=False, message="stopped")
+    for m in motors.values():
+        try:
+            m.hold()
+        except Exception:
+            pass
+    return jsonify(_twin_move_status())
 
 
 @app.route("/led/on", methods=["POST"])
@@ -2177,6 +2949,7 @@ def motor_disable(mid):
 @app.route("/estop", methods=["POST"])
 def estop():
     """Emergency stop: immediately hard-stop every motor and any playback."""
+    face_tracker.stop()
     arm.stop_playback()
     for m in motors.values():
         m.disable(soft=False)
@@ -2210,8 +2983,12 @@ def motor_jog(mid):
     if motor is None:
         return jsonify({"error": "unknown motor"}), 404
     data = request.get_json(silent=True) or {}
-    on = bool(data.get("on", True))
+    on = _as_bool(data.get("on", True), default=True)
     if on:
+        # Motor 1 is also used by face tracking (pan). Manual jog takes
+        # priority so the operator never fights the tracker.
+        if mid == FACE_TRACK_MOTOR_ID:
+            face_tracker.stop()
         direction = data.get("direction")
         if direction is not None:
             try:
@@ -2302,7 +3079,6 @@ def servo_angle(sid):
     """Get or set a servo's angle for 270deg servos (-135 to 135 degrees)."""
     if sid not in servos:
         return jsonify({"error": f"servo {sid} not available"}), 404
-    servo = servos[sid]
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
         angle = float(data.get("angle", 0))
@@ -2317,7 +3093,10 @@ def servo_angle(sid):
             prev = servo_angles.get(sid)
             # Ignore tiny request jitter from UI/network noise.
             if prev is None or abs(prev - angle) >= 0.5:
-                servo.angle = angle
+                if sid == 5 and prev is not None:
+                    _set_servo_angle_smooth(sid, prev, angle)
+                else:
+                    _set_servo_angle_hw(sid, angle)
                 servo_angles[sid] = angle
             if servo_hold.get(sid, True):
                 _cancel_servo_detach(sid)
@@ -2330,12 +3109,10 @@ def servo_angle(sid):
                 "hold": servo_hold.get(sid, True),
                 "detach_delay": servo_detach_delay.get(sid, 0.25),
             })
-    angle = servo_angles.get(sid)
-    if angle is None and getattr(servo, "angle", None) is not None:
-        angle = float(servo.angle)
+    angle = servo_angles.get(sid, 0.0)
     return jsonify({
         "servo": sid,
-        "angle": angle if angle is not None else 0.0,
+        "angle": angle,
         "enabled": servo_enabled.get(sid, True),
         "hold": servo_hold.get(sid, True),
         "detach_delay": servo_detach_delay.get(sid, 0.25),
@@ -2348,23 +3125,28 @@ def servo_power(sid):
     if sid not in servos:
         return jsonify({"error": f"servo {sid} not available"}), 404
     data = request.get_json(silent=True) or {}
-    on = bool(data.get("on", True))
-    servo = servos[sid]
+    on = _as_bool(data.get("on", True), default=True)
     with servo_lock:
         servo_enabled[sid] = on
         if on:
             angle = servo_angles.get(sid, 0.0)
-            servo.angle = angle
+            prev = servo_angles.get(sid, angle)
+            if sid == 5 and prev is not None:
+                _set_servo_angle_smooth(sid, prev, angle)
+            else:
+                _set_servo_angle_hw(sid, angle)
             if servo_hold.get(sid, True):
                 _cancel_servo_detach(sid)
             else:
                 _schedule_servo_detach(sid)
         else:
             _cancel_servo_detach(sid)
-            try:
-                servo.detach()
-            except Exception:
-                pass
+            pwm = servos.get(sid)
+            if pwm is not None:
+                try:
+                    pwm.change_duty_cycle(0)
+                except Exception:
+                    pass
     return jsonify({
         "servo": sid,
         "enabled": servo_enabled.get(sid, True),
@@ -2381,7 +3163,6 @@ def servo_hold_mode(sid):
         return jsonify({"error": f"servo {sid} not available"}), 404
     data = request.get_json(silent=True) or {}
     on = bool(data.get("on", True))
-    servo = servos[sid]
     with servo_lock:
         servo_hold[sid] = on
         if not servo_enabled.get(sid, True):
@@ -2394,7 +3175,12 @@ def servo_hold_mode(sid):
             })
         if on:
             _cancel_servo_detach(sid)
-            servo.angle = servo_angles.get(sid, 0.0)
+            angle = servo_angles.get(sid, 0.0)
+            prev = servo_angles.get(sid, angle)
+            if sid == 5 and prev is not None:
+                _set_servo_angle_smooth(sid, prev, angle)
+            else:
+                _set_servo_angle_hw(sid, angle)
         else:
             _schedule_servo_detach(sid)
     return jsonify({
@@ -2432,9 +3218,7 @@ def servo_status():
     """Return status of all servos."""
     status = {}
     for sid, servo in servos.items():
-        angle = servo_angles.get(sid)
-        if angle is None and getattr(servo, "angle", None) is not None:
-            angle = float(servo.angle)
+        angle = servo_angles.get(sid, 0.0)
         status[sid] = {
             "available": True,
             "angle": angle if angle is not None else 0.0,

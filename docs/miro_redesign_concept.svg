@@ -1,0 +1,179 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="1000" viewBox="0 0 1100 1000" font-family="'Segoe UI', Arial, sans-serif">
+<defs>
+  <!-- studio backdrop -->
+  <radialGradient id="stage" cx="0.5" cy="0.42" r="0.75">
+    <stop offset="0" stop-color="#222838"/>
+    <stop offset="0.6" stop-color="#141823"/>
+    <stop offset="1" stop-color="#0a0d14"/>
+  </radialGradient>
+
+  <!-- structural matte aluminium, vertical light -->
+  <linearGradient id="alV" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#3a4150"/>
+    <stop offset="0.18" stop-color="#cdd3e1"/>
+    <stop offset="0.5" stop-color="#79808f"/>
+    <stop offset="0.84" stop-color="#454c5b"/>
+    <stop offset="1" stop-color="#2a3040"/>
+  </linearGradient>
+  <linearGradient id="alV2" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#2f3543"/>
+    <stop offset="0.2" stop-color="#b7bdcb"/>
+    <stop offset="0.55" stop-color="#6c7383"/>
+    <stop offset="1" stop-color="#262b39"/>
+  </linearGradient>
+  <linearGradient id="alH" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#c3c9d6"/>
+    <stop offset="0.5" stop-color="#727a8a"/>
+    <stop offset="1" stop-color="#363d4b"/>
+  </linearGradient>
+
+  <!-- polished copper base -->
+  <linearGradient id="cu" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#f3c79a"/>
+    <stop offset="0.35" stop-color="#d8965f"/>
+    <stop offset="0.7" stop-color="#b06a36"/>
+    <stop offset="1" stop-color="#7d471f"/>
+  </linearGradient>
+  <linearGradient id="cuTop" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#a5673c"/>
+    <stop offset="0.5" stop-color="#f6d4ab"/>
+    <stop offset="1" stop-color="#a5673c"/>
+  </linearGradient>
+
+  <radialGradient id="dome" cx="0.36" cy="0.3" r="0.85">
+    <stop offset="0" stop-color="#d7dce7"/>
+    <stop offset="0.45" stop-color="#828a99"/>
+    <stop offset="1" stop-color="#363d4b"/>
+  </radialGradient>
+  <radialGradient id="cap" cx="0.4" cy="0.35" r="0.8">
+    <stop offset="0" stop-color="#5b6273"/>
+    <stop offset="1" stop-color="#222734"/>
+  </radialGradient>
+  <radialGradient id="teal" cx="0.4" cy="0.35" r="0.8">
+    <stop offset="0" stop-color="#5eead4"/>
+    <stop offset="1" stop-color="#0d9488"/>
+  </radialGradient>
+  <radialGradient id="lens" cx="0.4" cy="0.35" r="0.85">
+    <stop offset="0" stop-color="#3b4a66"/>
+    <stop offset="0.6" stop-color="#16202f"/>
+    <stop offset="1" stop-color="#05070c"/>
+  </radialGradient>
+  <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#ffffff" stop-opacity="0.5"/>
+    <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+  </linearGradient>
+
+  <filter id="sh" x="-40%" y="-40%" width="180%" height="180%">
+    <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.55"/>
+  </filter>
+  <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
+    <feGaussianBlur stdDeviation="3" result="b"/>
+    <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+</defs>
+
+<rect width="1100" height="1000" fill="url(#stage)"/>
+
+<!-- title -->
+<text x="60" y="58" fill="#f3f4f6" font-size="27" font-weight="700">MIRO &#8212; redesign concept</text>
+<text x="60" y="84" fill="#7b8290" font-size="14">3D-print-friendly restyle: unified base, accent ring, paneled dome, fluted links, clean joints, camera wrist.</text>
+
+<!-- floor reflection -->
+<ellipse cx="540" cy="892" rx="220" ry="34" fill="#000" opacity="0.55"/>
+
+<g filter="url(#sh)">
+  <!-- ================= BASE: single filleted puck ================= -->
+  <ellipse cx="540" cy="872" rx="186" ry="34" fill="url(#cu)"/>
+  <path d="M354 872 V828 a186 34 0 0 0 372 0 V872 a186 34 0 0 1 -372 0 Z" fill="url(#cu)"/>
+  <rect x="354" y="800" width="372" height="44" rx="20" fill="url(#cu)"/>
+  <ellipse cx="540" cy="800" rx="186" ry="33" fill="url(#cuTop)"/>
+  <ellipse cx="540" cy="800" rx="150" ry="25" fill="#8a5128" opacity="0.55"/>
+  <!-- recessed M4 bolt circle -->
+  <g fill="#5f3a1c">
+    <circle cx="540" cy="772" r="6"/><circle cx="612" cy="792" r="6"/><circle cx="468" cy="792" r="6"/>
+    <circle cx="600" cy="820" r="6"/><circle cx="480" cy="820" r="6"/>
+  </g>
+  <!-- top highlight -->
+  <ellipse cx="500" cy="792" rx="70" ry="9" fill="#ffe6c6" opacity="0.4"/>
+
+  <!-- accent ring (black spacer + teal pin-stripe) -->
+  <rect x="386" y="756" width="308" height="30" rx="15" fill="#11151d"/>
+  <rect x="386" y="768" width="308" height="5" rx="2.5" fill="#14b8a6"/>
+
+  <!-- ================= LOWER BODY (J1) with flute ================= -->
+  <path d="M408 760 Q408 700 430 660 L650 660 Q672 700 672 760 Z" fill="url(#alV)"/>
+  <!-- relief flute -->
+  <path d="M512 760 Q512 706 528 666 L552 666 Q536 706 536 760 Z" fill="#2a3040" opacity="0.7"/>
+  <path d="M430 760 V690" stroke="#ffffff" stroke-width="3" opacity="0.18"/>
+  <!-- engraved MIRO logo -->
+  <text x="600" y="726" fill="#9aa2b0" font-size="15" font-weight="700" letter-spacing="2" opacity="0.7" transform="rotate(-4 600 726)">MIRO</text>
+
+  <!-- ================= SHOULDER DOME (J2) ================= -->
+  <ellipse cx="540" cy="612" rx="142" ry="118" fill="url(#dome)"/>
+  <!-- deliberate panel-line groove across the split -->
+  <path d="M404 600 Q540 648 676 600" fill="none" stroke="#2b313e" stroke-width="5"/>
+  <path d="M404 600 Q540 648 676 600" fill="none" stroke="#aeb6c2" stroke-width="1.4" opacity="0.5"/>
+  <!-- dome sheen -->
+  <ellipse cx="486" cy="556" rx="64" ry="40" fill="url(#sheen)"/>
+  <!-- side bearing cap with bolt pattern + teal accent -->
+  <circle cx="668" cy="600" r="44" fill="url(#cap)"/>
+  <circle cx="668" cy="600" r="44" fill="none" stroke="#14b8a6" stroke-width="3"/>
+  <g fill="#11161f">
+    <circle cx="668" cy="568" r="4.5"/><circle cx="696" cy="588" r="4.5"/><circle cx="686" cy="622" r="4.5"/>
+    <circle cx="650" cy="622" r="4.5"/><circle cx="640" cy="588" r="4.5"/>
+  </g>
+  <circle cx="668" cy="600" r="14" fill="#1b2230"/>
+  <!-- axis index tick -->
+  <rect x="666" y="552" width="4" height="12" rx="2" fill="#5eead4"/>
+
+  <!-- ================= UPPER ARM LINK (J2->J3) with flute ================= -->
+  <line x1="556" y1="556" x2="470" y2="356" stroke="url(#alV2)" stroke-width="96" stroke-linecap="round"/>
+  <!-- relief flute down the link -->
+  <line x1="556" y1="540" x2="476" y2="372" stroke="#2a3040" stroke-width="30" stroke-linecap="round" opacity="0.65"/>
+  <line x1="540" y1="540" x2="462" y2="372" stroke="#ffffff" stroke-width="5" stroke-linecap="round" opacity="0.16"/>
+
+  <!-- ELBOW (J3) clean cylindrical housing, single split line -->
+  <circle cx="470" cy="356" r="62" fill="url(#dome)"/>
+  <circle cx="470" cy="356" r="62" fill="none" stroke="#2b313e" stroke-width="3"/>
+  <line x1="470" y1="294" x2="470" y2="418" stroke="#2b313e" stroke-width="3"/>
+  <circle cx="470" cy="356" r="24" fill="url(#cap)"/>
+  <circle cx="470" cy="356" r="24" fill="none" stroke="#14b8a6" stroke-width="2.5"/>
+  <circle cx="470" cy="356" r="7" fill="#11161f"/>
+
+  <!-- ================= FOREARM LINK (J3->J4) with flute ================= -->
+  <line x1="470" y1="356" x2="636" y2="250" stroke="url(#alH)" stroke-width="76" stroke-linecap="round"/>
+  <line x1="470" y1="356" x2="628" y2="256" stroke="#2a3040" stroke-width="24" stroke-linecap="round" opacity="0.6"/>
+  <line x1="474" y1="344" x2="628" y2="244" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity="0.16"/>
+
+  <!-- WRIST (J4) clean cylinder -->
+  <circle cx="636" cy="250" r="48" fill="url(#dome)"/>
+  <circle cx="636" cy="250" r="48" fill="none" stroke="#2b313e" stroke-width="2.5"/>
+  <line x1="600" y1="216" x2="672" y2="284" stroke="#2b313e" stroke-width="2.5"/>
+  <circle cx="636" cy="250" r="18" fill="url(#cap)"/>
+  <circle cx="636" cy="250" r="18" fill="none" stroke="#14b8a6" stroke-width="2"/>
+
+  <!-- J5 short link -->
+  <line x1="636" y1="250" x2="694" y2="206" stroke="url(#alH)" stroke-width="52" stroke-linecap="round"/>
+
+  <!-- ================= TOOL FLANGE + CAMERA HEAD (J6) ================= -->
+  <g transform="rotate(38 712 192)">
+    <!-- ISO-9409 style flange -->
+    <rect x="676" y="150" width="60" height="84" rx="18" fill="url(#alV2)"/>
+    <rect x="676" y="150" width="60" height="22" rx="11" fill="url(#sheen)"/>
+    <!-- bezel ring -->
+    <circle cx="706" cy="192" r="30" fill="#1b2230" stroke="#cdd3e1" stroke-width="3"/>
+    <circle cx="706" cy="192" r="22" fill="url(#lens)"/>
+    <circle cx="699" cy="185" r="6" fill="#7dd3fc" opacity="0.6"/>
+    <!-- status LED light-pipe -->
+    <circle cx="706" cy="158" r="6" fill="#34d399" filter="url(#glow)"/>
+  </g>
+</g>
+
+<!-- feature legend -->
+<g transform="translate(60,902)" font-size="13">
+  <circle cx="8" cy="-4" r="6" fill="#14b8a6"/><text x="22" y="0" fill="#aeb6c2">Teal accent on joint caps</text>
+  <circle cx="232" cy="-4" r="6" fill="#2a3040"/><text x="246" y="0" fill="#aeb6c2">Relief flutes + panel lines</text>
+  <circle cx="470" cy="-4" r="6" fill="#d8965f"/><text x="484" y="0" fill="#aeb6c2">Unified copper base w/ bolt circle</text>
+  <circle cx="772" cy="-4" r="6" fill="#7dd3fc"/><text x="786" y="0" fill="#aeb6c2">Camera wrist + LED light-pipe</text>
+</g>
+</svg>

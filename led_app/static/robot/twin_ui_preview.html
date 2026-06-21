@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Twin UI preview — Pose &amp; Send</title>
+<style>
+  body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0;
+    min-height: 100vh; padding: 1.4rem 1.25rem 2rem; }
+  .page-header { text-align: center; margin-bottom: 1.25rem; }
+  .page-header .sub { color: #5a6178; font-size: 0.85rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  .preview-banner { max-width: 1720px; margin: 0 auto 1rem; background: #1a2233; border: 1px solid #2a3650;
+    border-radius: 10px; padding: 0.6rem 0.9rem; font-size: 0.8rem; color: #9fd0ff; }
+  .preview-banner b { color: #ffd2a6; }
+
+  .teach { margin-top: 1.5rem; border: 1px solid #1f2937; border-radius: 12px; background: #0d1320;
+    padding: 1rem 1.15rem 1.2rem; max-width: 1720px; margin-left: auto; margin-right: auto; }
+  .teach .card-title { font-size: 0.95rem; font-weight: 600; color: #e5e7eb; margin-bottom: 0.85rem;
+    display: flex; align-items: center; gap: 0.6rem; }
+  .btn-t { background:#1f2937; color:#e5e7eb; border:1px solid #374151; border-radius:7px;
+    padding:6px 12px; font-size:0.8rem; cursor:pointer; transition: background .15s, border-color .15s; }
+  .btn-t:hover { background:#283344; }
+  .btn-t.primary { background:#0e7490; border-color:#0e7490; }
+  .btn-t.primary:hover { background:#0891b2; }
+  .btn-t.danger { background:#7f1d1d; border-color:#7f1d1d; }
+  .btn-t.danger:hover { background:#991b1b; }
+  .btn-t:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .twin-toolbar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
+  .twin-status { font-size: 0.78rem; color: #6f7891; font-variant-numeric: tabular-nums; }
+  .twin-status.live { color: #6fdc8c; }
+  .twin-status.err { color: #ff8e8e; }
+  .twin-stage { position: relative; width: 100%; height: 440px; background: #0e1116;
+    border: 1px solid #2a3142; border-radius: 12px; overflow: hidden; }
+  .twin-stage canvas { display: block; }
+  .twin-note { margin-top: 0.6rem; font-size: 0.72rem; color: #6f7891; }
+  .twin-note b { color: #ffb347; }
+  .twin-modes { display: inline-flex; gap: 0.3rem; }
+  .twin-modes .btn-t.active { background: #1c2740; border-color: #3a5a86; color: #9fd0ff; }
+  .twin-cmd { margin-top: 0.9rem; }
+  .twin-cmd-hint { font-size: 0.74rem; color: #8a93a8; margin-bottom: 0.7rem; }
+  .twin-cmd-hint b { color: #ffb347; }
+  .twin-cmd-sliders { display: grid; gap: 0.5rem; }
+  .twin-jrow { display: grid; grid-template-columns: 76px 1fr 60px; align-items: center; gap: 0.6rem; font-size: 0.78rem; color: #aeb6c8; }
+  .twin-jrow input[type="range"] { width: 100%; accent-color: #ffb066; }
+  .twin-jrow .v { text-align: right; color: #ffd2a6; font-variant-numeric: tabular-nums; }
+  .twin-cmd-actions { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; margin-top: 0.9rem; }
+  .twin-cmd-speed { font-size: 0.78rem; color: #aeb6c8; display: flex; align-items: center; gap: 0.4rem; }
+  .twin-cmd-speed input { width: 110px; accent-color: #ffb066; }
+  .twin-arm { font-size: 0.8rem; color: #ffb347; display: flex; align-items: center; gap: 0.3rem; cursor: pointer; }
+  .twin-limits { margin-top: 0.9rem; font-size: 0.76rem; color: #8a93a8; }
+  .twin-limits summary { cursor: pointer; color: #7dd3fc; margin-bottom: 0.5rem; }
+  .twin-lrow { display: grid; grid-template-columns: 76px 1fr 1fr; gap: 0.5rem; align-items: center; margin: 0.4rem 0; }
+  .twin-lrow input { width: 100%; background: #0e1116; border: 1px solid #2a3142; color: #d9dee8; border-radius: 6px; padding: 0.25rem 0.4rem; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+  <div class="page-header">
+    <h1>Twin UI preview</h1>
+    <div class="sub">Pose &amp; Send &middot; offline mock</div>
+  </div>
+  <div class="preview-banner">
+    This is a <b>standalone preview</b> of the new digital-twin panel exactly as it appears in the main UI.
+    The 3D model is real; the robot endpoints are <b>mocked</b> so nothing is sent to hardware. Click
+    <b>Show twin</b> &rarr; <b>Command</b> to try posing the model and the (simulated) Move.
+  </div>
+
+  <div class="teach twin-card">
+    <div class="card-title">3D Digital Twin</div>
+    <div class="twin-toolbar">
+      <button class="btn-t primary" id="twin-toggle">Show twin</button>
+      <button class="btn-t" id="twin-zero" disabled>Set home (zero)</button>
+      <span class="twin-modes" id="twin-modes" style="display:none;">
+        <button class="btn-t active" id="twin-mode-mirror">Mirror</button>
+        <button class="btn-t" id="twin-mode-command">Command</button>
+      </span>
+      <span class="twin-status" id="twin-status">off</span>
+    </div>
+    <div class="twin-stage" id="twin-stage" style="display:none;">
+      <div id="twin-canvas"></div>
+    </div>
+    <div class="twin-cmd" id="twin-cmd" style="display:none;">
+      <div class="twin-cmd-hint">Drag the joints to pose the model, then press <b>Move robot</b>.
+        Set <b>home</b> first with the real arm at its zero pose.</div>
+      <div class="twin-cmd-sliders" id="twin-cmd-sliders"></div>
+      <div class="twin-cmd-actions">
+        <label class="twin-cmd-speed">Speed
+          <input type="range" id="twin-speed" min="0.1" max="1" step="0.05" value="0.4">
+          <span id="twin-speed-val">0.40&times;</span>
+        </label>
+        <label class="twin-arm" title="Safety: enable to allow sending the move"><input type="checkbox" id="twin-arm"> Arm</label>
+        <button class="btn-t primary" id="twin-send" disabled>&#9654; Move robot to pose</button>
+        <button class="btn-t danger" id="twin-stop-move">&#9632; STOP</button>
+        <span class="twin-status" id="twin-move-status">idle</span>
+      </div>
+      <details class="twin-limits">
+        <summary>Joint limits (degrees)</summary>
+        <div id="twin-limits-rows"></div>
+        <button class="btn-t" id="twin-limits-apply">Apply limits</button>
+      </details>
+    </div>
+    <div class="twin-note">Live mirror of the arm from the encoders (joints 1–3) and servos (joints 4–5).
+      Switch to <b>Command</b> to pose the model and drive the real arm (steppers + tilt + gripper).
+      Press <b>Set home</b> with the arm at its zero pose to align the model.</div>
+  </div>
+
+  <script>
+    // ---- Mock backend: intercept the /twin/* + /joint_states endpoints so the
+    // real UI runs offline with no hardware. ------------------------------------
+    const _mockState = { moving: false, ok: null, message: 'idle', zeroed: false };
+    const _mockLimits = {
+      joint1: [-1.5708, 1.5708], joint2: [-1.5708, 1.5708],
+      joint3: [-1.5708, 1.5708], joint4: [-1.0472, 1.0472],
+      joint5: [-1.0472, 1.0472],
+    };
+    const _realFetch = window.fetch.bind(window);
+    window.fetch = async (url, opts) => {
+      const u = String(url);
+      const body = opts && opts.body ? JSON.parse(opts.body) : {};
+      const json = (o) => new Response(JSON.stringify(o), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (u.includes('/twin/config')) {
+        return json({ commandable: ['joint1', 'joint2', 'joint3', 'joint4', 'joint5'], limits: _mockLimits });
+      }
+      if (u.includes('/twin/enable')) return json({ status: 'ok' });
+      if (u.includes('/twin/zero')) { _mockState.zeroed = true; return json({ status: 'ok', angles: { joint1: 0, joint2: 0, joint3: 0, joint4: 0, joint5: 0 } }); }
+      if (u.includes('/twin/limits')) { Object.assign(_mockLimits, body.limits || {}); return json({ limits: _mockLimits }); }
+      if (u.includes('/twin/move_status')) return json({ ..._mockState });
+      if (u.includes('/twin/stop')) { _mockState.moving = false; _mockState.message = 'stopped'; return json({ ..._mockState }); }
+      if (u.includes('/twin/move')) {
+        if (!_mockState.zeroed) return json({ started: false, message: 'set home first (press Set home)', ..._mockState });
+        _mockState.moving = true; _mockState.ok = null; _mockState.message = 'moving… (simulated)';
+        setTimeout(() => { _mockState.moving = false; _mockState.ok = true; _mockState.message = 'move complete (simulated)'; }, 2200);
+        return json({ started: true, message: 'moving', ..._mockState });
+      }
+      if (u.includes('/joint_states')) {
+        const t = Date.now() / 1000;
+        return json({ angles: {
+          joint1: 0.5 * Math.sin(t * 0.6), joint2: 0.4 * Math.sin(t * 0.5 + 1),
+          joint3: 0.4 * Math.sin(t * 0.7 + 2), joint4: 0.3 * Math.sin(t * 0.9 + 3),
+          joint5: 0.0,
+        } });
+      }
+      return _realFetch(url, opts);
+    };
+  </script>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+      "three/examples/jsm/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+      "urdf-loader": "https://unpkg.com/urdf-loader@0.12.6/src/URDFLoader.js"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+    import URDFLoader from 'urdf-loader';
+
+    const stage = document.getElementById('twin-stage');
+    const host = document.getElementById('twin-canvas');
+    const toggleBtn = document.getElementById('twin-toggle');
+    const zeroBtn = document.getElementById('twin-zero');
+    const statusEl = document.getElementById('twin-status');
+    const modesEl = document.getElementById('twin-modes');
+    const modeMirrorBtn = document.getElementById('twin-mode-mirror');
+    const modeCommandBtn = document.getElementById('twin-mode-command');
+    const cmdPanel = document.getElementById('twin-cmd');
+    const cmdSliders = document.getElementById('twin-cmd-sliders');
+    const speedEl = document.getElementById('twin-speed');
+    const speedValEl = document.getElementById('twin-speed-val');
+    const armEl = document.getElementById('twin-arm');
+    const sendBtn = document.getElementById('twin-send');
+    const stopMoveBtn = document.getElementById('twin-stop-move');
+    const moveStatusEl = document.getElementById('twin-move-status');
+    const limitRowsEl = document.getElementById('twin-limits-rows');
+    const limitApplyBtn = document.getElementById('twin-limits-apply');
+
+    const TWIN_LIMITS_KEY = 'twin_limits_v1';
+    let inited = false, on = false;
+    let mode = 'mirror';
+    let renderer, scene, camera, controls, robot = null;
+    let raf = 0, pollTimer = 0, moveTimer = 0;
+    let commandable = [];
+    let limits = {};
+    const targetAngles = {};
+    const curAngles = {};
+    const SMOOTH = 0.25;
+    const RAD2DEG = 180 / Math.PI, DEG2RAD = Math.PI / 180;
+
+    function setStatus(text, cls) {
+      statusEl.textContent = text;
+      statusEl.className = 'twin-status' + (cls ? ' ' + cls : '');
+    }
+
+    function init() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0e1116);
+      camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
+      camera.position.set(0.8, 0.8, 0.8);
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      host.appendChild(renderer.domElement);
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+      const d1 = new THREE.DirectionalLight(0xffffff, 1.1); d1.position.set(1, 1.5, 1); scene.add(d1);
+      const d2 = new THREE.DirectionalLight(0x88aaff, 0.4); d2.position.set(-1, 0.5, -1); scene.add(d2);
+      scene.add(new THREE.GridHelper(2, 20, 0x2a3142, 0x1c2130));
+
+      const manager = new THREE.LoadingManager();
+      manager.onLoad = () => { if (robot) { frameRobot(); setStatus('live', 'live'); } };
+      const loader = new URDFLoader(manager);
+      loader.loadMeshCb = (path, mgr, done) => {
+        new STLLoader(mgr).load(path, geom => {
+          geom.computeVertexNormals();
+          done(new THREE.Mesh(geom, new THREE.MeshStandardMaterial(
+            { color: 0xbfc6d2, metalness: 0.35, roughness: 0.55 })));
+        }, undefined, err => done(null, err));
+      };
+      loader.load('robot.urdf', result => {
+        robot = result;
+        robot.rotation.x = -Math.PI / 2;
+        scene.add(robot);
+        Object.values(robot.joints).forEach(j => {
+          if (j.jointType !== 'fixed') { targetAngles[j.name] = 0; curAngles[j.name] = 0; }
+        });
+      }, undefined, () => setStatus('model load error', 'err'));
+
+      window.addEventListener('resize', () => { if (on) resize(); });
+      inited = true;
+    }
+
+    function resize() {
+      const w = stage.clientWidth, h = stage.clientHeight;
+      if (!w || !h) return;
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+
+    function frameRobot() {
+      const box = new THREE.Box3().setFromObject(robot);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      controls.target.copy(center);
+      camera.position.copy(center).add(new THREE.Vector3(1, 0.8, 1).normalize().multiplyScalar(maxDim * 1.9));
+      camera.near = maxDim / 100; camera.far = maxDim * 100; camera.updateProjectionMatrix();
+      controls.update();
+    }
+
+    function animate() {
+      raf = requestAnimationFrame(animate);
+      if (robot) {
+        for (const name in targetAngles) {
+          const cur = curAngles[name] || 0;
+          const next = cur + (targetAngles[name] - cur) * SMOOTH;
+          curAngles[name] = next;
+          robot.setJointValue(name, next);
+        }
+      }
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    async function fetchJoints() {
+      try {
+        const r = await fetch('/joint_states', { cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (d.angles) for (const name in d.angles) targetAngles[name] = d.angles[name];
+      } catch (e) { /* offline */ }
+    }
+
+    async function setEnabled(state) {
+      try {
+        await fetch('/twin/enable', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ on: state }),
+        });
+      } catch (e) { /* offline */ }
+    }
+
+    toggleBtn.addEventListener('click', () => {
+      on = !on;
+      if (on) {
+        stage.style.display = 'block';
+        if (!inited) init();
+        requestAnimationFrame(() => { resize(); });
+        setStatus('loading…');
+        loadConfig();
+        if (!raf) animate();
+        toggleBtn.textContent = 'Hide twin';
+        zeroBtn.disabled = false;
+        modesEl.style.display = 'inline-flex';
+        setMode('mirror');
+      } else {
+        stage.style.display = 'none';
+        setEnabled(false);
+        stopPolling();
+        if (moveTimer) { clearInterval(moveTimer); moveTimer = 0; }
+        if (raf) { cancelAnimationFrame(raf); raf = 0; }
+        toggleBtn.textContent = 'Show twin';
+        zeroBtn.disabled = true;
+        modesEl.style.display = 'none';
+        cmdPanel.style.display = 'none';
+        setStatus('off');
+      }
+    });
+
+    function stopPolling() {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = 0; }
+    }
+
+    function setMode(m) {
+      mode = m;
+      modeMirrorBtn.classList.toggle('active', m === 'mirror');
+      modeCommandBtn.classList.toggle('active', m === 'command');
+      if (m === 'mirror') {
+        cmdPanel.style.display = 'none';
+        setEnabled(true);
+        if (!pollTimer) pollTimer = setInterval(fetchJoints, 120);
+        setStatus('live', 'live');
+      } else {
+        setEnabled(false);
+        stopPolling();
+        cmdPanel.style.display = 'block';
+        buildCommandUI();
+        setStatus('command', 'live');
+      }
+    }
+
+    modeMirrorBtn.addEventListener('click', () => { if (mode !== 'mirror') setMode('mirror'); });
+    modeCommandBtn.addEventListener('click', () => { if (mode !== 'command') setMode('command'); });
+
+    async function loadConfig() {
+      try {
+        const r = await fetch('/twin/config', { cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json();
+        commandable = d.commandable || [];
+        limits = {};
+        for (const name in (d.limits || {})) limits[name] = d.limits[name].slice();
+      } catch (e) { /* offline */ }
+      try {
+        const saved = JSON.parse(localStorage.getItem(TWIN_LIMITS_KEY) || 'null');
+        if (saved) for (const name in saved) if (limits[name]) limits[name] = saved[name];
+      } catch (e) { /* ignore */ }
+    }
+
+    function buildCommandUI() {
+      cmdSliders.innerHTML = '';
+      limitRowsEl.innerHTML = '';
+      commandable.forEach(name => {
+        const lim = limits[name] || [-Math.PI, Math.PI];
+        const loDeg = Math.round(lim[0] * RAD2DEG), hiDeg = Math.round(lim[1] * RAD2DEG);
+        const cur = (targetAngles[name] || 0) * RAD2DEG;
+
+        const row = document.createElement('label');
+        row.className = 'twin-jrow';
+        row.innerHTML =
+          `<span>${name}</span>` +
+          `<input type="range" min="${loDeg}" max="${hiDeg}" step="1" value="${Math.round(cur)}" data-j="${name}">` +
+          `<span class="v" id="twin-v-${name}">${Math.round(cur)}&deg;</span>`;
+        const slider = row.querySelector('input');
+        slider.addEventListener('input', () => {
+          const deg = parseFloat(slider.value);
+          targetAngles[name] = deg * DEG2RAD;
+          document.getElementById('twin-v-' + name).textContent = Math.round(deg) + '\u00b0';
+        });
+        cmdSliders.appendChild(row);
+
+        const lrow = document.createElement('div');
+        lrow.className = 'twin-lrow';
+        lrow.innerHTML =
+          `<span>${name}</span>` +
+          `<input type="number" step="1" value="${loDeg}" data-lim="${name}" data-edge="lo" placeholder="min°">` +
+          `<input type="number" step="1" value="${hiDeg}" data-lim="${name}" data-edge="hi" placeholder="max°">`;
+        limitRowsEl.appendChild(lrow);
+      });
+    }
+
+    speedEl.addEventListener('input', () => {
+      speedValEl.textContent = parseFloat(speedEl.value).toFixed(2) + '\u00d7';
+    });
+
+    armEl.addEventListener('change', () => { sendBtn.disabled = !armEl.checked; });
+
+    sendBtn.addEventListener('click', async () => {
+      if (!armEl.checked) return;
+      const angles = {};
+      commandable.forEach(name => { angles[name] = targetAngles[name] || 0; });
+      setMoveStatus('sending…');
+      try {
+        const r = await fetch('/twin/move', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ angles, speed: parseFloat(speedEl.value) }),
+        });
+        const d = await r.json();
+        if (!d.started) { setMoveStatus(d.message || 'rejected', 'err'); return; }
+        setMoveStatus('moving…');
+        startMovePolling();
+      } catch (e) { setMoveStatus('offline', 'err'); }
+    });
+
+    stopMoveBtn.addEventListener('click', async () => {
+      try { await fetch('/twin/stop', { method: 'POST' }); } catch (e) { /* offline */ }
+      setMoveStatus('stopped', 'err');
+      if (moveTimer) { clearInterval(moveTimer); moveTimer = 0; }
+    });
+
+    function startMovePolling() {
+      if (moveTimer) clearInterval(moveTimer);
+      moveTimer = setInterval(async () => {
+        try {
+          const r = await fetch('/twin/move_status', { cache: 'no-store' });
+          const d = await r.json();
+          if (!d.moving) {
+            clearInterval(moveTimer); moveTimer = 0;
+            setMoveStatus(d.message || 'done', d.ok === false ? 'err' : 'live');
+          } else {
+            setMoveStatus(d.message || 'moving…');
+          }
+        } catch (e) { /* offline */ }
+      }, 300);
+    }
+
+    function setMoveStatus(text, cls) {
+      moveStatusEl.textContent = text;
+      moveStatusEl.className = 'twin-status' + (cls ? ' ' + cls : '');
+    }
+
+    limitApplyBtn.addEventListener('click', async () => {
+      const out = {};
+      limitRowsEl.querySelectorAll('input[data-lim]').forEach(inp => {
+        const name = inp.dataset.lim;
+        if (!out[name]) out[name] = [null, null];
+        const v = parseFloat(inp.value) * DEG2RAD;
+        out[name][inp.dataset.edge === 'lo' ? 0 : 1] = v;
+      });
+      for (const name in out) {
+        let [lo, hi] = out[name];
+        if (lo > hi) { const t = lo; lo = hi; hi = t; }
+        limits[name] = [lo, hi];
+      }
+      try {
+        localStorage.setItem(TWIN_LIMITS_KEY, JSON.stringify(limits));
+        await fetch('/twin/limits', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ limits }),
+        });
+      } catch (e) { /* offline */ }
+      buildCommandUI();
+      setMoveStatus('limits applied', 'live');
+    });
+
+    zeroBtn.addEventListener('click', async () => {
+      try {
+        const r = await fetch('/twin/zero', { method: 'POST' });
+        const d = await r.json();
+        if (mode === 'mirror' && d.angles) {
+          for (const name in d.angles) targetAngles[name] = d.angles[name];
+        } else {
+          commandable.forEach(name => { targetAngles[name] = 0; });
+          buildCommandUI();
+        }
+        setStatus('home set', 'live');
+      } catch (e) { /* offline */ }
+    });
+  </script>
+</body>
+</html>

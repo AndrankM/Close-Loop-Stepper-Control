@@ -1,0 +1,182 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="TOP Level assembly robotic">
+  <link name="Miro">
+    <inertial>
+      <origin xyz="0.12809 0.28302 0.18465" rpy="0 0 0" />
+      <mass value="6.1293" />
+      <inertia ixx="0.0062833" ixy="-8.0836E-05" ixz="1.5073E-05" iyy="0.0098446" iyz="2.184E-05" izz="0.0087326" />
+    </inertial>
+    </link>
+  <link name="AXIS 1">
+    <inertial>
+      <origin xyz="-0.26755 0.19557 0.082474" rpy="0 0 0" />
+      <mass value="1.1936" />
+      <inertia ixx="0.0026872" ixy="1.5216E-05" ixz="-6.6065E-07" iyy="0.0059432" iyz="-5.4659E-08" izz="0.0038908" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/axis1.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/axis1.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="base_fixed" type="fixed">
+    <origin xyz="0.32844 -0.107 -0.060546" rpy="1.5708 0 0" />
+    <parent link="Miro" />
+    <child link="AXIS 1" />
+    </joint>
+  <link name="Axis 2">
+    <inertial>
+      <origin xyz="-0.00021854 0.049376 0.0099302" rpy="0 0 0" />
+      <mass value="3.0409" />
+      <inertia ixx="0.0018084" ixy="-4.7087E-07" ixz="-2.1659E-08" iyy="0.0021007" iyz="-4.0185E-06" izz="0.0025247" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/axis2.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/axis2.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="joint1" type="revolute">
+    <origin xyz="-0.22955 0.24269 0.082099" rpy="3.1416 -0.0025833 -3.1416" />
+    <parent link="AXIS 1" />
+    <child link="Axis 2" />
+    <axis xyz="0 1 0" />
+    <limit lower="-1.5708" upper="1.5708" effort="10" velocity="3" />
+  </joint>
+  <link name="Axis 3">
+    <inertial>
+      <origin xyz="-0.0018297 0.069638 0.00012582" rpy="0 0 0" />
+      <mass value="0.96159" />
+      <inertia ixx="0.0015331" ixy="2.2065E-05" ixz="-2.1997E-07" iyy="0.0011138" iyz="1.0043E-06" izz="0.0014746" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/axis3.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/axis3.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="joint2" type="revolute">
+    <origin xyz="-0.0008 0.1734 0" rpy="2.316 1.5708 2.8287" />
+    <parent link="Axis 2" />
+    <child link="Axis 3" />
+    <axis xyz="1 0 0" />
+    <limit lower="-1.5708" upper="1.5708" effort="10" velocity="3" />
+  </joint>
+  <link name="Axis 4">
+    <inertial>
+      <origin xyz="0.0059037 0.030379 -3.6398E-05" rpy="0 0 0" />
+      <mass value="0.4266" />
+      <inertia ixx="0.00042706" ixy="1.5556E-08" ixz="1.0912E-07" iyy="0.00015671" iyz="-2.5981E-08" izz="0.00036572" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/axis4.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/axis4.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="joint3" type="revolute">
+    <origin xyz="0 0.194 0" rpy="-1.2236 0 0" />
+    <parent link="Axis 3" />
+    <child link="Axis 4" />
+    <axis xyz="1 0 0" />
+    <limit lower="-1.5708" upper="1.5708" effort="10" velocity="3" />
+  </joint>
+  <link name="Axis 5">
+    <inertial>
+      <origin xyz="-0.00026602 0.046585 -4.0594E-10" rpy="0 0 0" />
+      <mass value="0.25241" />
+      <inertia ixx="0.0001724" ixy="-1.528E-13" ixz="-2.123E-08" iyy="0.00011394" iyz="-9.1201E-13" izz="0.00014163" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/axis5.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.50196 0.50196 0.50196 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/axis5.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="joint4" type="revolute">
+    <origin xyz="-4.9882E-05 0.10239 0" rpy="0 0.0077579 0" />
+    <parent link="Axis 4" />
+    <child link="Axis 5" />
+    <axis xyz="0 1 0" />
+    <limit lower="-1.5708" upper="1.5708" effort="10" velocity="3" />
+  </joint>
+  <link name="Axis 6">
+    <inertial>
+      <origin xyz="-0.0012592 0.0095714 0.017485" rpy="0 0 0" />
+      <mass value="0.25416" />
+      <inertia ixx="0.0001339" ixy="7.9395E-07" ixz="5.062E-06" iyy="0.0001847" iyz="1.4116E-06" izz="8.8088E-05" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/axis6.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="meshes/axis6.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="joint5" type="revolute">
+    <origin xyz="0 0.091411 0" rpy="3.1416 -0.77362 1.5708" />
+    <parent link="Axis 5" />
+    <child link="Axis 6" />
+    <axis xyz="0 1 0" />
+    <limit lower="-1.0472" upper="1.0472" effort="10" velocity="3" />
+  </joint>
+</robot>
