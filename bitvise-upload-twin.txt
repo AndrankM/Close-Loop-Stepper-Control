@@ -1,0 +1,3 @@
+put -o "d:\Git CLones\PI SSH Test\led_app\app.py" /tmp/app.py
+put -o "d:\Git CLones\PI SSH Test\led_app\templates\index.html" /tmp/index.html
+put -o "d:\Git CLones\PI SSH Test\deploy_twin_restart.sh" /tmp/deploy_twin_restart.sh
