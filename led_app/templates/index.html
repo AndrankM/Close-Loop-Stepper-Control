@@ -794,7 +794,10 @@
         </div>
         <div class="cc-obj">
           <button class="cc-obj-btn" id="cc-rings-test" onclick="testRings()">&#128161; Test LED rings</button>
+          <button class="cc-obj-btn on" id="cc-rings-toggle" onclick="toggleRings()">&#128161; LED rings: ON</button>
+          <button class="cc-obj-btn" id="cc-act-led-toggle" onclick="toggleActLed()">&#128309; Pi ACT LED: OFF</button>
           <div class="cc-hint" id="cc-rings-hint">WS2812 rings on SPI (GPIO10). Runs an R/G/B sweep.</div>
+          <div class="cc-hint" id="cc-led-hint">ACT LED uses onboard status LED control.</div>
         </div>
       </div>
     </div>
@@ -896,9 +899,9 @@
     // Motor definitions: id, friendly name, wiring note, and gear reduction.
     const MOTORS = [
       { id: 1, name: 'Motor 1', gear: 5, wiring: 'EN GPIO17 · STP GPIO27 · DIR GPIO22 · addr 0xE0 · 5:1 planetary' },
-      { id: 2, name: 'Motor 2', gear: 5, wiring: 'EN GPIO2 · STP GPIO3 · DIR GPIO4 · addr 0xE1 · 5:1 planetary' },
-      { id: 3, name: 'Motor 3', gear: 1, limits: true, wiring: 'EN GPIO23 · STP GPIO24 · DIR GPIO25 · addr 0xE2 · direct drive · end-stop GPIO26 (shared)' },
-      { id: 4, name: 'Motor 4', gear: 1, limits: true, wiring: 'EN GPIO16 · STP GPIO20 · DIR GPIO21 · addr 0xE3 · direct drive · end-stop GPIO19 (shared)' },
+      { id: 2, name: 'Motor 2', gear: 5, limits: true, limitTitle: 'Hall limits: CW GPIO5, CCW GPIO6 (active-low)', wiring: 'EN GPIO2 · STP GPIO3 · DIR GPIO4 · addr 0xE1 · 5:1 planetary · hall limits CW GPIO5 / CCW GPIO6' },
+      { id: 3, name: 'Motor 3', gear: 1, limits: true, limitTitle: 'Shared travel limit (GPIO26)', wiring: 'EN GPIO23 · STP GPIO24 · DIR GPIO25 · addr 0xE2 · direct drive · end-stop GPIO26 (shared)' },
+      { id: 4, name: 'Motor 4', gear: 1, limits: true, limitTitle: 'Shared travel limit (GPIO19)', wiring: 'EN GPIO16 · STP GPIO20 · DIR GPIO21 · addr 0xE3 · direct drive · end-stop GPIO19 (shared)' },
     ];
 
     const SERVOS = [
@@ -1367,7 +1370,7 @@
 ${m.limits ? `
             <div class="limit-row">
               <label>End stop</label>
-              <span class="limit-pill" id="limit-${i}" title="Shared travel limit (GPIO26)"><span class="ld"></span><span id="limit-text-${i}">open</span></span>
+              <span class="limit-pill" id="limit-${i}" title="${m.limitTitle || 'Travel limit input'}"><span class="ld"></span><span id="limit-text-${i}">open</span></span>
             </div>` : ''}
 
             <div class="control-row">
@@ -1849,6 +1852,8 @@ ${m.limits ? `
     const ccByKey = Object.fromEntries(CC_EMOTIONS.map(e => [e.key, e]));
     let camVisible = false, camTimer = null;
     let faceTrackOn = false;
+    let ringsOn = true;
+    let actLedOn = false;
     (function buildCamBars() {
       const host = document.getElementById('cc-bars');
       CC_EMOTIONS.forEach(e => {
@@ -1881,6 +1886,8 @@ ${m.limits ? `
         img.src = '/camera/stream?t=' + Date.now();
         pollEmotion();
         pollFaceTracking();
+        syncRingsStatus();
+        syncActLedStatus();
         if (!camTimer) camTimer = setInterval(function () {
           pollEmotion();
           pollFaceTracking();
@@ -1996,6 +2003,70 @@ ${m.limits ? `
         btn.disabled = false;
         btn.innerHTML = orig;
       }, 4200);
+    }
+
+    function renderRingsToggle() {
+      const btn = document.getElementById('cc-rings-toggle');
+      if (!btn) return;
+      btn.classList.toggle('on', ringsOn);
+      btn.innerHTML = '&#128161; LED rings: ' + (ringsOn ? 'ON' : 'OFF');
+    }
+
+    async function syncRingsStatus() {
+      try {
+        const r = await fetch('/emotion/rings', { cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (typeof d.enabled === 'boolean') ringsOn = d.enabled;
+        renderRingsToggle();
+      } catch (e) { /* offline */ }
+    }
+
+    async function toggleRings() {
+      const next = !ringsOn;
+      try {
+        const r = await fetch('/emotion/rings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ on: next }),
+        });
+        if (!r.ok) throw new Error('failed');
+        const d = await r.json();
+        ringsOn = (typeof d.enabled === 'boolean') ? d.enabled : next;
+      } catch (e) {
+        ringsOn = !next;
+      }
+      renderRingsToggle();
+    }
+
+    function renderActLedToggle() {
+      const btn = document.getElementById('cc-act-led-toggle');
+      if (!btn) return;
+      btn.classList.toggle('on', actLedOn);
+      btn.innerHTML = '&#128309; Pi ACT LED: ' + (actLedOn ? 'ON' : 'OFF');
+    }
+
+    async function syncActLedStatus() {
+      try {
+        const r = await fetch('/led/status', { cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json();
+        actLedOn = (d.status === 'on');
+        renderActLedToggle();
+      } catch (e) { /* offline */ }
+    }
+
+    async function toggleActLed() {
+      const next = !actLedOn;
+      try {
+        const r = await fetch(next ? '/led/on' : '/led/off', { method: 'POST' });
+        if (!r.ok) throw new Error('failed');
+        const d = await r.json();
+        actLedOn = (d.status === 'on');
+      } catch (e) {
+        actLedOn = !next;
+      }
+      renderActLedToggle();
     }
 
     async function toggleFaceTracking() {

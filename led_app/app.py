@@ -379,7 +379,7 @@ def read_health():
 #   Motor 1:  EN -> GPIO 17   STP -> GPIO 27   DIR -> GPIO 22
 #   Motor 2:  EN -> GPIO 2    STP -> GPIO 3    DIR -> GPIO 4
 #   Motor 3:  EN -> GPIO 23   STP -> GPIO 24   DIR -> GPIO 25
-#   Motor 4:  EN -> GPIO 0    STP -> GPIO 5    DIR -> GPIO 6
+#   Motor 4:  EN -> GPIO 16   STP -> GPIO 20   DIR -> GPIO 21
 #   (EN is active-LOW on the SERVO42C)
 #   NOTE: Motor 3 was moved off GPIO 9/10/11 because those are the SPI0 pins
 #   (GPIO10 = MOSI) used to drive the WS2812 emotion rings on the Pi 5.
@@ -408,6 +408,14 @@ MOTOR1_GEAR_RATIO = 5.0
 MOTOR2_GEAR_RATIO = 5.0
 MOTOR3_GEAR_RATIO = 1.0
 MOTOR4_GEAR_RATIO = 1.0
+
+# Motor 2 dedicated Hall end-stops:
+#   CW  limit -> GPIO 5
+#   CCW limit -> GPIO 6
+# Hall sensors are wired active-low: idle HIGH, trigger pulls input to 0V.
+M2_LIMIT_CW_PIN = 5
+M2_LIMIT_CCW_PIN = 6
+M2_LIMIT_ACTIVE_LOW = True
 
 # Motor 3 end-stop limit switches. Both travel-limit switches share a SINGLE
 # GPIO line (GPIO 26): each is wired to 3.3V (the Pi GPIO is 3.3V only — never
@@ -508,7 +516,8 @@ class StepperMotor:
     """Generates step pulses on a background thread while the motor is enabled."""
 
     def __init__(self, en_pin, stp_pin, dir_pin, gear_ratio=1.0,
-                 limit_pin=None):
+                 limit_pin=None, limit_pin_cw=None, limit_pin_ccw=None,
+                 limit_active_low=False):
         self._lock = threading.Lock()
         self.enabled = False
         self.stopping = False
@@ -519,12 +528,11 @@ class StepperMotor:
         self.full_steps_per_rev = DEFAULT_FULL_STEPS_PER_REV
         self.microstepping = DEFAULT_MICROSTEPPING
         self.gear_ratio = float(gear_ratio) or 1.0  # motor revs : output revs
-        # End-stop state. A single shared switch line can't say WHICH end was
-        # hit, so we latch the travel direction at the moment it trips; that
-        # direction stays blocked until the switch releases, while the opposite
-        # direction is allowed so the joint can back off.
+        # End-stop state. Supports either a single shared line (legacy) or
+        # dedicated CW/CCW inputs.
         self.limit_stop = False
         self._blocked_dir = None
+        self._limit_active_low = bool(limit_active_low)
         self._stop = threading.Event()
         self._soft_stop = threading.Event()
         # When set, the worker keeps the coils energized but emits no pulses
@@ -552,15 +560,37 @@ class StepperMotor:
                 stp_pin, frequency=max(1, int(DEFAULT_SPEED)), initial_value=0.0
             )
             self._dir = DigitalOutputDevice(dir_pin, initial_value=False)
-            # Optional shared end-stop switch: pull-down so idle reads LOW and a
-            # press (3.3V) reads HIGH (is_active True). Small debounce.
+            # Optional end-stop inputs. pull_up=False means active-HIGH input;
+            # pull_up=True means active-LOW input (idle HIGH, trigger LOW).
             self._limit = (
-                DigitalInputDevice(limit_pin, pull_up=False, bounce_time=0.005)
+                DigitalInputDevice(
+                    limit_pin,
+                    pull_up=self._limit_active_low,
+                    bounce_time=0.005,
+                )
                 if limit_pin is not None else None
+            )
+            self._limit_cw = (
+                DigitalInputDevice(
+                    limit_pin_cw,
+                    pull_up=self._limit_active_low,
+                    bounce_time=0.005,
+                )
+                if limit_pin_cw is not None else None
+            )
+            self._limit_ccw = (
+                DigitalInputDevice(
+                    limit_pin_ccw,
+                    pull_up=self._limit_active_low,
+                    bounce_time=0.005,
+                )
+                if limit_pin_ccw is not None else None
             )
         else:
             self._en = self._step = self._dir = None
             self._limit = None
+            self._limit_cw = None
+            self._limit_ccw = None
 
     # -- worker -------------------------------------------------------------
     def _run(self):
@@ -582,20 +612,34 @@ class StepperMotor:
             held = self._pause.is_set()
             soft = self._soft_stop.is_set()
 
-            # End-stop (single shared switch line). When the line is pressed we
-            # latch the current travel direction as "blocked" (only one end stop
-            # is reachable at a time, so the direction we're moving identifies
-            # which limit was hit). That direction stays blocked until the line
-            # releases; the opposite direction is allowed so the joint can back
-            # off the switch.
-            pressed = self._limit_pressed()
-            if pressed:
-                if self._blocked_dir is None and self.current_speed > 0 \
-                        and not held and not soft:
-                    self._blocked_dir = self.direction
+            # End-stop behavior:
+            # - Dedicated CW/CCW lines: block only the matching direction.
+            # - Shared line: latch currently moving direction until release.
+            if self._limit_cw is not None or self._limit_ccw is not None:
+                pressed_cw = self._limit_pressed_cw()
+                pressed_ccw = self._limit_pressed_ccw()
+                if pressed_cw and not pressed_ccw:
+                    self._blocked_dir = "cw"
+                elif pressed_ccw and not pressed_cw:
+                    self._blocked_dir = "ccw"
+                elif pressed_cw and pressed_ccw:
+                    self._blocked_dir = "both"
+                else:
+                    self._blocked_dir = None
+                limited = (
+                    (pressed_cw and self.direction == "cw")
+                    or (pressed_ccw and self.direction == "ccw")
+                    or (self._blocked_dir == "both")
+                )
             else:
-                self._blocked_dir = None
-            limited = pressed and self._blocked_dir == self.direction
+                pressed = self._limit_pressed()
+                if pressed:
+                    if self._blocked_dir is None and self.current_speed > 0 \
+                            and not held and not soft:
+                        self._blocked_dir = self.direction
+                else:
+                    self._blocked_dir = None
+                limited = pressed and self._blocked_dir == self.direction
             self.limit_stop = limited
             if limited:
                 self.current_speed = 0.0
@@ -791,11 +835,32 @@ class StepperMotor:
         except Exception:
             return False
 
+    def _limit_pressed_cw(self):
+        try:
+            return self._limit_cw is not None and bool(self._limit_cw.is_active)
+        except Exception:
+            return False
+
+    def _limit_pressed_ccw(self):
+        try:
+            return self._limit_ccw is not None and bool(self._limit_ccw.is_active)
+        except Exception:
+            return False
+
     def _limit_state(self):
         """End-stop info, or None if this motor has no limit switch."""
-        if self._limit is None:
+        if self._limit is None and self._limit_cw is None and self._limit_ccw is None:
             return None
-        return {"pressed": self._limit_pressed(), "blocked_dir": self._blocked_dir}
+        pressed_cw = self._limit_pressed_cw()
+        pressed_ccw = self._limit_pressed_ccw()
+        pressed_shared = self._limit_pressed()
+        return {
+            "pressed": bool(pressed_shared or pressed_cw or pressed_ccw),
+            "blocked_dir": self._blocked_dir,
+            "cw": pressed_cw,
+            "ccw": pressed_ccw,
+            "shared": pressed_shared,
+        }
 
     def status(self):
         return {
@@ -819,7 +884,15 @@ class StepperMotor:
 
 motors = {
     1: StepperMotor(EN_PIN, STP_PIN, DIR_PIN, MOTOR1_GEAR_RATIO),
-    2: StepperMotor(EN2_PIN, STP2_PIN, DIR2_PIN, MOTOR2_GEAR_RATIO),
+    2: StepperMotor(
+        EN2_PIN,
+        STP2_PIN,
+        DIR2_PIN,
+        MOTOR2_GEAR_RATIO,
+        limit_pin_cw=M2_LIMIT_CW_PIN,
+        limit_pin_ccw=M2_LIMIT_CCW_PIN,
+        limit_active_low=M2_LIMIT_ACTIVE_LOW,
+    ),
     3: StepperMotor(
         EN3_PIN, STP3_PIN, DIR3_PIN, MOTOR3_GEAR_RATIO, limit_pin=M3_LIMIT_PIN,
     ),

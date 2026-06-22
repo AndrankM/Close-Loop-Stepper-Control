@@ -27,11 +27,12 @@ shaft.
 - **Trapezoidal acceleration / deceleration** — the live speed eases toward the
   target and back down to zero at a configurable acceleration (steps/s²), giving a
   symmetric trapezoidal velocity profile with smooth starts *and* stops.
-- **End-stop limit switches (Motors 3 &amp; 4)** — each has two hardware limit
-  switches on a single shared GPIO line that stop the motor the instant an end
-  stop is hit (the travel direction identifies which one), while still allowing it
-  to jog back off. A live end-stop indicator and an `END STOP` state appear on the
-  motor card.
+- **End-stop / hall limit switches (Motors 2, 3 &amp; 4)** — motor 2 uses dedicated
+  hall inputs per direction (**CW GPIO 5**, **CCW GPIO 6**, active-low), while
+  motors 3 and 4 each use two hardware limit switches on a single shared GPIO line.
+  Limits stop motion immediately in the blocked direction while still allowing jog
+  away from the stop. A live end-stop indicator and an `END STOP` state appear on
+  the motor card.
 - **Teach &amp; playback** — record encoder poses and play them back as coordinated
   motion, Dobot-style (see [Teach &amp; playback](#teach--playback)).
 - **Raspberry Pi 5 health monitoring** — a header temperature chip plus a
@@ -81,28 +82,40 @@ shaft.
 | ----- | ---------------- | ------- | ------- | ------- |
 | 1     | 5:1 planetary    | GPIO 17 | GPIO 27 | GPIO 22 |
 | 2     | 5:1 planetary    | GPIO 2  | GPIO 3  | GPIO 4  |
-| 3     | Direct (1:1)     | GPIO 10 | GPIO 9  | GPIO 11 |
+| 3     | Direct (1:1)     | GPIO 23 | GPIO 24 | GPIO 25 |
 | 4     | Direct (1:1)     | GPIO 16 | GPIO 20 | GPIO 21 |
 
 `EN` is active-LOW on the SERVO42C; each motor's `GND` ties to the Pi `GND`.
 
-### End-stop limit switches (Motors 3 &amp; 4)
+### End-stop / hall limit switches (Motors 2, 3 &amp; 4)
+
+Motor 2 uses two dedicated **hall-effect** limit inputs, one per direction:
+
+| Motor | Sensor type | Direction | GPIO   | Idle | Triggered |
+| ----- | ----------- | --------- | ------ | ---- | --------- |
+| 2     | Hall        | CW        | GPIO 5 | HIGH | LOW (0 V) |
+| 2     | Hall        | CCW       | GPIO 6 | HIGH | LOW (0 V) |
+
+These are configured as active-low in software (`pull_up=True`), matching hall
+outputs that pull the pin to 0 V at limit.
+
+Motors 3 and 4 each keep the shared-line end-stop layout:
 
 Motors 3 and 4 each have two travel-limit switches sharing a **single GPIO line**
 (GPIO 26 for motor 3, GPIO 19 for motor 4). Each switch is wired to **3.3 V** (the
 Pi GPIO is 3.3 V tolerant only — **never wire a GPIO to 5 V**) so a pressed switch
 drives the pin HIGH; an internal pull-down holds it LOW when released.
 
-| Motor | Shared travel limit | Idle  | Pressed |
-| ----- | ------------------- | ----- | ------- |
-| 3     | GPIO 26             | LOW   | HIGH    |
-| 4     | GPIO 19             | LOW   | HIGH    |
+| Motor | Shared travel limit | Idle | Pressed |
+| ----- | ------------------- | ---- | ------- |
+| 3     | GPIO 26             | LOW  | HIGH    |
+| 4     | GPIO 19             | LOW  | HIGH    |
 
-Only one end stop can be reached at a time, so the motor's **current travel
-direction** identifies which limit was hit — no separate pin per switch is needed.
-When the line trips, the motor stops immediately and that direction stays blocked
-until the switch releases; jogging the opposite direction backs it off. If your
-switches are normally-closed, invert the logic in `app.py`.
+For motors 3/4, only one end stop can be reached at a time, so the motor's
+**current travel direction** identifies which limit was hit — no separate pin per
+switch is needed. When the line trips, the motor stops immediately and that
+direction stays blocked until the switch releases; jogging the opposite direction
+backs it off.
 
 ### Encoder feedback (shared UART / TTL bus)
 
@@ -228,6 +241,12 @@ Routes are parameterized by motor id (`<mid>` = `1`–`4`).
 | GET    | `/camera/snapshot`        | Single annotated JPEG frame                 |
 | GET    | `/objects/latest`         | Latest object detections (boxes, centres, normalised offsets, primary) |
 | POST   | `/objects/enable`         | Enable/disable object detection (`{"on": true\|false}`) |
+| GET    | `/emotion/rings`          | Emotion rings status JSON (`enabled`, `available`, backend info) |
+| POST   | `/emotion/rings`          | Enable/disable emotion rings (`{"on": true\|false}`) |
+| POST   | `/emotion/rings/test`     | Run LED ring self-test sweep |
+| POST   | `/led/on`                 | Turn Pi ACT LED on |
+| POST   | `/led/off`                | Turn Pi ACT LED off |
+| GET    | `/led/status`             | Pi ACT LED status JSON |
 | GET    | `/system/temp`            | Pi 5 SoC temperature JSON                   |
 | GET    | `/system/health`          | Pi 5 health JSON (CPU, memory, disk, swap, network, fan, power, throttling) |
 
