@@ -411,13 +411,13 @@ MOTOR4_GEAR_RATIO = 1.0
 
 # Motor 2 dedicated Hall end-stops:
 #   CW  limit -> GPIO 5
-#   CCW limit -> GPIO 11  (moved from GPIO 6 which is stuck LOW, 7 was busy)
+#   CCW limit -> GPIO 9  (moved from GPIO 6 which is stuck LOW, 7 was busy)
 # Sensors are active-LOW: idle = 3.3 V, triggered (at limit) = 0 V.
 # pull_up=True (internal pull-up) → is_active when LOW.
 # Override per sensor via env var if wiring differs:
 #   M2_LIMIT_CW_ACTIVE_LOW=0  or  M2_LIMIT_CCW_ACTIVE_LOW=0
 M2_LIMIT_CW_PIN = 5
-M2_LIMIT_CCW_PIN = 11
+M2_LIMIT_CCW_PIN = 9
 M2_LIMIT_ACTIVE_LOW = True  # active-LOW sensors: is_active when pin = 0 V
 def _env_bool(name, default):
     v = os.environ.get(name, "").strip().lower()
@@ -520,6 +520,51 @@ def _as_bool(value, default=False):
     return bool(value)
 
 
+class _DirectGPIOInput:
+    """GPIO input via a private lgpio handle with explicit pull configuration.
+
+    gpiozero's lgpio backend passes SET_PULL_NONE to gpio_claim_input, which
+    preserves the RP1 default pull.  Many Pi 5 GPIOs default to pull-down, so
+    idle pins read 0 even with pull_up=True in gpiozero.  This class opens its
+    own chip handle and claims the pin with the correct flag so the pull is
+    actually applied.
+    """
+
+    _chip_handle = None  # shared handle for all instances
+
+    @classmethod
+    def _handle(cls):
+        if cls._chip_handle is None:
+            try:
+                import lgpio as _lg
+                cls._chip_handle = _lg.gpiochip_open(0)
+            except Exception:
+                cls._chip_handle = -1
+        return cls._chip_handle
+
+    def __init__(self, pin, pull_up=True):
+        import lgpio as _lg
+        self._lg = _lg
+        self._pin = pin
+        self.pull_up = pull_up
+        h = self._handle()
+        if h >= 0:
+            flag = _lg.SET_PULL_UP if pull_up else _lg.SET_PULL_DOWN
+            _lg.gpio_claim_input(h, pin, flag)
+
+    @property
+    def value(self):
+        h = self._handle()
+        if h < 0:
+            return 0
+        v = self._lg.gpio_read(h, self._pin)
+        return max(0, v)
+
+    @property
+    def is_active(self):
+        return bool(self.value)
+
+
 class StepperMotor:
     """Generates step pulses on a background thread while the motor is enabled."""
 
@@ -588,20 +633,17 @@ class StepperMotor:
                 )
                 if limit_pin is not None else None
             )
+            # CW limit: gpiozero DigitalInputDevice preserves the RP1 hardware
+            # default pull (SET_PULL_NONE), which works correctly for GPIO 5.
             self._limit_cw = (
-                DigitalInputDevice(
-                    limit_pin_cw,
-                    pull_up=bool(_cw_al),
-                    bounce_time=0.005,
-                )
+                DigitalInputDevice(limit_pin_cw, pull_up=bool(_cw_al), bounce_time=0.005)
                 if limit_pin_cw is not None else None
             )
+            # CCW limit: use _DirectGPIOInput so the pull-up is explicitly
+            # applied — gpiozero's SET_PULL_NONE leaves GPIO 9 at its RP1
+            # default (pull-down), causing it to always read 0 when idle.
             self._limit_ccw = (
-                DigitalInputDevice(
-                    limit_pin_ccw,
-                    pull_up=bool(_ccw_al),
-                    bounce_time=0.005,
-                )
+                _DirectGPIOInput(limit_pin_ccw, pull_up=bool(_ccw_al))
                 if limit_pin_ccw is not None else None
             )
         else:
@@ -952,6 +994,21 @@ motors = {
         EN4_PIN, STP4_PIN, DIR4_PIN, MOTOR4_GEAR_RATIO, limit_pin=M4_LIMIT_PIN,
     ),
 }
+
+# The Pi 5 RP1 chip leaves many GPIO pins at pull-down by default. gpiozero's
+# lgpio backend calls gpio_claim_input with SET_PULL_NONE (preserve current),
+# so those pins stay pulled-down and read 0 even when idle. Force pull-up on
+# the Motor 2 limit switch pins via the same lgpio handle gpiozero already holds.
+if GPIO_AVAILABLE:
+    try:
+        import lgpio as _lgpio
+        from gpiozero.pins.lgpio import LGPIOFactory
+        _factory = gpiozero.Device.pin_factory
+        if isinstance(_factory, LGPIOFactory):
+            for _pin in [M2_LIMIT_CW_PIN, M2_LIMIT_CCW_PIN]:
+                _lgpio.gpio_claim_input(_factory._handle, _pin, _lgpio.SET_PULL_UP)
+    except Exception as _e:
+        print(f"Warning: could not force pull-up on Motor 2 limit pins: {_e}")
 
 # Standard RC servos for axis 5 & 6 using true hardware PWM (rpi-hardware-pwm).
 servos = {}            # sid -> HardwarePWM instance
