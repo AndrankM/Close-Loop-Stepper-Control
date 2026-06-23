@@ -653,7 +653,7 @@
   .twin-status { font-size: 0.78rem; color: #6f7891; font-variant-numeric: tabular-nums; }
   .twin-status.live { color: #6fdc8c; }
   .twin-status.err { color: #ff8e8e; }
-  .twin-stage { position: relative; width: 100%; height: 440px; background: #0e1116;
+  .twin-stage { position: relative; width: 100%; height: clamp(500px, 62vh, 760px); background: #0e1116;
     border: 1px solid #2a3142; border-radius: 12px; overflow: hidden; }
   .twin-stage canvas { display: block; }
   .twin-note { margin-top: 0.6rem; font-size: 0.72rem; color: #6f7891; }
@@ -675,6 +675,47 @@
   .twin-limits summary { cursor: pointer; color: #7dd3fc; margin-bottom: 0.5rem; }
   .twin-lrow { display: grid; grid-template-columns: 76px 1fr 1fr; gap: 0.5rem; align-items: center; margin: 0.4rem 0; }
   .twin-lrow input { width: 100%; background: #0e1116; border: 1px solid #2a3142; color: #d9dee8; border-radius: 6px; padding: 0.25rem 0.4rem; font-variant-numeric: tabular-nums; }
+
+  /* ---- split dashboard layout: controls left, twin right ---- */
+  .layout-grid {
+    max-width: min(98vw, 1920px);
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(560px, 1fr);
+    gap: 1.2rem;
+    align-items: start;
+  }
+  .layout-grid .units {
+    max-width: none;
+    margin: 0;
+  }
+  .layout-grid .teach {
+    max-width: none;
+    margin-left: 0;
+    margin-right: 0;
+  }
+  .layout-grid .right-panel .twin-card {
+    margin-top: 0;
+    position: sticky;
+    top: 12px;
+  }
+  .layout-grid .right-panel .servo-card {
+    margin-top: 1rem;
+  }
+  @media (max-width: 1680px) {
+    .layout-grid {
+      grid-template-columns: minmax(0, 1.45fr) minmax(520px, 1fr);
+    }
+  }
+  @media (max-width: 1360px) {
+    .layout-grid {
+      grid-template-columns: 1fr;
+    }
+    .layout-grid .right-panel .twin-card {
+      position: static;
+      top: auto;
+    }
+  }
 </style>
 </head>
 <body>
@@ -778,7 +819,7 @@
         </div>
         <div class="cc-obj">
           <button class="cc-obj-btn" id="cc-face-track-toggle" onclick="toggleFaceTracking()">&#128100; Face tracking: OFF</button>
-          <div class="cc-hint" id="cc-face-track-hint">Tracks face using Motor 3 (pan) + Axis 5 (tilt).</div>
+          <div class="cc-hint" id="cc-face-track-hint">Head tracking uses Motors 1-4 + Axis 5 tilt.</div>
           <div class="cc-track-speed" id="cc-track-speed">
             <label class="cc-track-row">
               <span>Pan speed</span>
@@ -803,56 +844,12 @@
     </div>
   </div>
 
-  <div class="teach twin-card">
-    <div class="card-title">3D Digital Twin</div>
-    <div class="twin-toolbar">
-      <button class="btn-t primary" id="twin-toggle">Show twin</button>
-      <button class="btn-t" id="twin-zero" disabled>Set home (zero)</button>
-      <span class="twin-modes" id="twin-modes" style="display:none;">
-        <button class="btn-t active" id="twin-mode-mirror">Mirror</button>
-        <button class="btn-t" id="twin-mode-command">Command</button>
-      </span>
-      <span class="twin-status" id="twin-status">off</span>
-    </div>
-    <div class="twin-stage" id="twin-stage" style="display:none;">
-      <div id="twin-canvas"></div>
-    </div>
-    <div class="twin-cmd" id="twin-cmd" style="display:none;">
-      <div class="twin-cmd-hint">Drag the joints to pose the model, then press <b>Move robot</b>.
-        Set <b>home</b> first with the real arm at its zero pose.</div>
-      <div class="twin-cmd-sliders" id="twin-cmd-sliders"></div>
-      <div class="twin-cmd-actions">
-        <label class="twin-cmd-speed">Speed
-          <input type="range" id="twin-speed" min="0.1" max="1" step="0.05" value="0.4">
-          <span id="twin-speed-val">0.40&times;</span>
-        </label>
-        <label class="twin-arm" title="Safety: enable to allow sending the move"><input type="checkbox" id="twin-arm"> Arm</label>
-        <button class="btn-t primary" id="twin-send" disabled>&#9654; Move robot to pose</button>
-        <button class="btn-t danger" id="twin-stop-move">&#9632; STOP</button>
-        <span class="twin-status" id="twin-move-status">idle</span>
-      </div>
-      <details class="twin-limits">
-        <summary>Joint limits (degrees)</summary>
-        <div id="twin-limits-rows"></div>
-        <button class="btn-t" id="twin-limits-apply">Apply limits</button>
-      </details>
-    </div>
-    <div class="twin-note">Live mirror of the arm from the encoders (joints 1–3) and servos (joints 4–5).
-      Switch to <b>Command</b> to pose the model and drive the real arm (steppers + tilt + gripper).
-      Press <b>Set home</b> with the arm at its zero pose to align the model.</div>
-  </div>
+  <div class="layout-grid">
+    <div class="left-panel">
+      <div class="units" id="units"></div>
 
-  <div class="units" id="units"></div>
-
-  <div class="teach servo-card">
-    <div class="card-title">Servo Motors &middot; Axis 5 &amp; 6</div>
-    <div id="servo-controls" style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
-      <!-- Populated by JS -->
-    </div>
-  </div>
-
-  <div class="teach">
-    <div class="card-title">Teach &amp; Playback</div>
+      <div class="teach">
+        <div class="card-title">Teach &amp; Playback</div>
 
     <div class="teach-toolbar">
       <button class="btn-t warn" id="t-freedrive">Free-drive: OFF</button>
@@ -890,7 +887,57 @@
       </thead>
       <tbody id="t-rows"></tbody>
     </table>
-    <div class="wp-empty" id="t-empty">No waypoints recorded yet. Use free-drive or the motor controls to position the arm, then Record.</div>
+        <div class="wp-empty" id="t-empty">No waypoints recorded yet. Use free-drive or the motor controls to position the arm, then Record.</div>
+      </div>
+    </div>
+
+    <div class="right-panel">
+      <div class="teach twin-card">
+        <div class="card-title">3D Digital Twin</div>
+        <div class="twin-toolbar">
+          <button class="btn-t primary" id="twin-toggle">Show twin</button>
+          <button class="btn-t" id="twin-zero" disabled>Set home (zero)</button>
+          <span class="twin-modes" id="twin-modes" style="display:none;">
+            <button class="btn-t active" id="twin-mode-mirror">Mirror</button>
+            <button class="btn-t" id="twin-mode-command">Command</button>
+          </span>
+          <span class="twin-status" id="twin-status">off</span>
+        </div>
+        <div class="twin-stage" id="twin-stage" style="display:none;">
+          <div id="twin-canvas"></div>
+        </div>
+        <div class="twin-cmd" id="twin-cmd" style="display:none;">
+          <div class="twin-cmd-hint">Drag the joints to pose the model, then press <b>Move robot</b>.
+            Set <b>home</b> first with the real arm at its zero pose.</div>
+          <div class="twin-cmd-sliders" id="twin-cmd-sliders"></div>
+          <div class="twin-cmd-actions">
+            <label class="twin-cmd-speed">Speed
+              <input type="range" id="twin-speed" min="0.1" max="1" step="0.05" value="0.4">
+              <span id="twin-speed-val">0.40&times;</span>
+            </label>
+            <label class="twin-arm" title="Safety: enable to allow sending the move"><input type="checkbox" id="twin-arm"> Arm</label>
+            <button class="btn-t primary" id="twin-send" disabled>&#9654; Move robot to pose</button>
+            <button class="btn-t danger" id="twin-stop-move">&#9632; STOP</button>
+            <span class="twin-status" id="twin-move-status">idle</span>
+          </div>
+          <details class="twin-limits">
+            <summary>Joint limits (degrees)</summary>
+            <div id="twin-limits-rows"></div>
+            <button class="btn-t" id="twin-limits-apply">Apply limits</button>
+          </details>
+        </div>
+        <div class="twin-note">Live mirror of the arm from encoders (joints 1–4, with Motor 2 on joint 3 and Motor 1 on joint 4) and Axis 5 tilt on joint 5.
+          Switch to <b>Command</b> to pose the model and drive the real arm (steppers + tilt).
+          Press <b>Set home</b> with the arm at its zero pose to align the model.</div>
+      </div>
+
+      <div class="teach servo-card">
+        <div class="card-title">Servo Motors &middot; Axis 5 &amp; 6</div>
+        <div id="servo-controls" style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </div>
   </div>
 
   <p class="footer">AndPI5 &middot; 192.168.0.101:5000</p>
@@ -898,10 +945,10 @@
   <script>
     // Motor definitions: id, friendly name, wiring note, and gear reduction.
     const MOTORS = [
-      { id: 1, name: 'Motor 1', gear: 5, wiring: 'EN GPIO17 · STP GPIO27 · DIR GPIO22 · addr 0xE0 · 5:1 planetary' },
-      { id: 2, name: 'Motor 2', gear: 5, limits: true, limitTitle: 'Hall limits: CW GPIO5, CCW GPIO6 (active-low)', wiring: 'EN GPIO2 · STP GPIO3 · DIR GPIO4 · addr 0xE1 · 5:1 planetary · hall limits CW GPIO5 / CCW GPIO6' },
-      { id: 3, name: 'Motor 3', gear: 1, limits: true, limitTitle: 'Shared travel limit (GPIO26)', wiring: 'EN GPIO23 · STP GPIO24 · DIR GPIO25 · addr 0xE2 · direct drive · end-stop GPIO26 (shared)' },
-      { id: 4, name: 'Motor 4', gear: 1, limits: true, limitTitle: 'Shared travel limit (GPIO19)', wiring: 'EN GPIO16 · STP GPIO20 · DIR GPIO21 · addr 0xE3 · direct drive · end-stop GPIO19 (shared)' },
+      { id: 1, name: 'Joint 4 · Motor 1', gear: 5, wiring: 'EN GPIO17 · STP GPIO27 · DIR GPIO22 · addr 0xE0 · 5:1 planetary' },
+      { id: 2, name: 'Joint 3 · Motor 2', gear: 5, limits: true, limitTitle: 'Hall limits: CW GPIO5, CCW GPIO6 (active-low)', wiring: 'EN GPIO2 · STP GPIO3 · DIR GPIO4 · addr 0xE1 · 5:1 planetary · hall limits CW GPIO5 / CCW GPIO6' },
+      { id: 3, name: 'Joint 2 · Motor 3 (Pan)', gear: 1, limits: true, limitTitle: 'Shared travel limit (GPIO26)', wiring: 'EN GPIO23 · STP GPIO24 · DIR GPIO25 · addr 0xE2 · direct drive · end-stop GPIO26 (shared)' },
+      { id: 4, name: 'Joint 1 · Motor 4', gear: 1, limits: true, limitTitle: 'Shared travel limit (GPIO19)', wiring: 'EN GPIO16 · STP GPIO20 · DIR GPIO21 · addr 0xE3 · direct drive · end-stop GPIO19 (shared)' },
     ];
 
     const SERVOS = [
@@ -2113,7 +2160,7 @@ ${m.limits ? `
           if (Number.isFinite(d.tilt_speed)) setTrackSlider('tilt', d.tilt_speed);
         }
         if (!faceTrackOn) {
-          hint.textContent = 'Tracks face using Motor 1 (pan) + Axis 5 (tilt).';
+          hint.textContent = 'Head tracking uses Motors 1-4 + Axis 5 tilt.';
           return;
         }
         if (!d.has_face) {
@@ -2123,8 +2170,10 @@ ${m.limits ? `
         const ex = (d.error_px && d.error_px.length > 0) ? d.error_px[0] : 0;
         const ey = (d.error_px && d.error_px.length > 1) ? d.error_px[1] : 0;
         const sps = d.motor_sps || 0;
+        const spsMap = d.motor_sps_map || {};
+        const mtxt = ['1','2','3','4'].map(k => 'M' + k + ':' + (spsMap[k] || 0)).join(' ');
         const tilt = Number.isFinite(d.servo_angle) ? d.servo_angle.toFixed(1) : '--';
-        hint.textContent = 'Face lock: pan ' + sps + ' sps, tilt ' + tilt + '°, error [' + ex + ',' + ey + ']';
+        hint.textContent = 'Head lock: max ' + sps + ' sps (' + mtxt + '), tilt ' + tilt + '°, error [' + ex + ',' + ey + ']';
       } catch (e) { /* offline */ }
     }
 

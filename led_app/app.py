@@ -1183,14 +1183,13 @@ def get_encoder(mid):
 
 
 # ---- Digital twin joint-state polling ----------------------------------
-# Maps the URDF joints to their position sources. The base joint (Motor1) is
-# FIXED in the URDF, so the twin's joint1..5 map to the remaining axes:
-#   joint1 -> Motor2, joint2 -> Motor3 (PAN), joint3 -> Motor4 (steppers),
-#   joint4 -> Servo5 (TILT), joint5 -> Servo6 (gripper).
+# Maps URDF joints to real hardware sources. User-calibrated mapping:
+#   joint1 -> Motor4, joint2 -> Motor3 (PAN), joint3 -> Motor2,
+#   joint4 -> Motor1, joint5 -> Servo5 (Axis5 tilt).
 # SIGN flips a joint's direction so the on-screen twin matches the real arm;
 # tune these against the hardware.
-TWIN_JOINT_ENCODERS = {1: 2, 2: 3, 3: 4}   # twin joint -> encoder/motor id
-TWIN_JOINT_SERVOS = {4: 5, 5: 6}           # twin joint -> servo id
+TWIN_JOINT_ENCODERS = {1: 4, 2: 3, 3: 2, 4: 1}   # twin joint -> encoder/motor id
+TWIN_JOINT_SERVOS = {5: 5}                       # twin joint -> servo id
 TWIN_JOINT_SIGN = {1: 1.0, 2: 1.0, 3: 1.0, 4: 1.0, 5: 1.0}
 TWIN_POLL_DT = 0.12                              # ~8 Hz encoder cache refresh
 
@@ -1530,11 +1529,10 @@ arm = RobotArm(motors, encoders)
 # ---------------------------------------------------------------------------
 # Digital twin: drive the REAL arm from the 3D model (Pose & Send)
 # ---------------------------------------------------------------------------
-# Which twin joints command hardware. joint1-3 are steppers (closed-loop
-# encoder move); joint4 is the tilt servo and joint5 the gripper servo. The
-# base (Motor1) stays fixed.
-TWIN_COMMAND_STEPPERS = {1: 2, 2: 3, 3: 4}   # twin joint -> motor id
-TWIN_COMMAND_SERVOS = {4: 5, 5: 6}           # twin joint -> servo id (tilt, gripper)
+# Which twin joints command hardware. joint1-4 are steppers (closed-loop
+# encoder move); joint5 is the Axis5 tilt servo.
+TWIN_COMMAND_STEPPERS = {1: 4, 2: 3, 3: 2, 4: 1}   # twin joint -> motor id
+TWIN_COMMAND_SERVOS = {5: 5}                       # twin joint -> servo id (tilt)
 # Per-joint travel limits in RADIANS (mirror the URDF defaults). The UI can
 # override these via POST /twin/limits and the move command clamps to them.
 TWIN_JOINT_LIMITS = {
@@ -1957,12 +1955,45 @@ camera = EmotionCamera()
 
 
 # ---------------------------------------------------------------------------
-# Face tracking (camera on robot head)
-#   - Horizontal error drives the pan motor (Motor 3)
-#   - Vertical error drives Axis 5 servo (tilt)
+# Head tracking (camera on robot head)
+#   - Face-box X/Y error is mixed across all arm steppers (Motors 1-4)
+#   - Axis 5 servo provides fine vertical tilt
 # ---------------------------------------------------------------------------
-FACE_TRACK_MOTOR_ID = int(os.environ.get("FACE_TRACK_MOTOR_ID", "3"))
 FACE_TRACK_SERVO_ID = int(os.environ.get("FACE_TRACK_SERVO_ID", "5"))
+FACE_TRACK_MOTOR_IDS = [
+    int(x.strip()) for x in os.environ.get("FACE_TRACK_MOTOR_IDS", "1,2,3,4").split(",")
+    if x.strip()
+]
+# Per-motor mix from pixel error -> virtual command:
+#   cmd = ex*mix_x + ey*mix_y
+# Positive cmd follows FACE_TRACK_MOTOR_SIGN to choose CW/CCW.
+FACE_TRACK_MIX_X = {
+    1: float(os.environ.get("FACE_TRACK_M1_MIX_X", "0.80")),
+    2: float(os.environ.get("FACE_TRACK_M2_MIX_X", "0.90")),
+    3: float(os.environ.get("FACE_TRACK_M3_MIX_X", "0.88")),
+    4: float(os.environ.get("FACE_TRACK_M4_MIX_X", "0.82")),
+}
+FACE_TRACK_MIX_Y = {
+    1: float(os.environ.get("FACE_TRACK_M1_MIX_Y", "0.90")),
+    2: float(os.environ.get("FACE_TRACK_M2_MIX_Y", "0.40")),
+    3: float(os.environ.get("FACE_TRACK_M3_MIX_Y", "0.22")),
+    4: float(os.environ.get("FACE_TRACK_M4_MIX_Y", "-0.30")),
+}
+# Circular/orbital motion coupling. Positive values make a motor react to
+# rotational head movement around the image center, not only pure X/Y drift.
+# Joint 4 is Motor 1 in this rig, so M1 gets the strongest circular coupling.
+FACE_TRACK_MIX_ROT = {
+    1: float(os.environ.get("FACE_TRACK_M1_MIX_ROT", "1.00")),
+    2: float(os.environ.get("FACE_TRACK_M2_MIX_ROT", "0.25")),
+    3: float(os.environ.get("FACE_TRACK_M3_MIX_ROT", "0.10")),
+    4: float(os.environ.get("FACE_TRACK_M4_MIX_ROT", "-0.15")),
+}
+FACE_TRACK_MOTOR_SIGN = {
+    1: int(os.environ.get("FACE_TRACK_M1_SIGN", "1")),
+    2: int(os.environ.get("FACE_TRACK_M2_SIGN", "1")),
+    3: int(os.environ.get("FACE_TRACK_M3_SIGN", "1")),
+    4: int(os.environ.get("FACE_TRACK_M4_SIGN", "1")),
+}
 FACE_TRACK_LOOP_DT = float(os.environ.get("FACE_TRACK_LOOP_DT", "0.06"))
 FACE_TRACK_X_DEADZONE_PX = int(os.environ.get("FACE_TRACK_X_DEADZONE_PX", "45"))
 FACE_TRACK_X_START_PX = int(os.environ.get("FACE_TRACK_X_START_PX", "60"))
@@ -1970,6 +2001,13 @@ FACE_TRACK_Y_DEADZONE_PX = int(os.environ.get("FACE_TRACK_Y_DEADZONE_PX", "35"))
 # Start tilt only once the vertical error exceeds this (must be > deadzone) so
 # the head does not chatter up/down around the centred position (hysteresis).
 FACE_TRACK_Y_START_PX = int(os.environ.get("FACE_TRACK_Y_START_PX", "55"))
+# Bias the vertical target a bit lower in the frame so upward body motion
+# (standing up) creates a stronger corrective response.
+FACE_TRACK_Y_TARGET_OFFSET_PX = int(os.environ.get("FACE_TRACK_Y_TARGET_OFFSET_PX", "24"))
+# Directional hysteresis: upward face motion should engage sooner than
+# downward motion so standing up is followed promptly.
+FACE_TRACK_Y_UP_DEADZONE_PX = int(os.environ.get("FACE_TRACK_Y_UP_DEADZONE_PX", "20"))
+FACE_TRACK_Y_UP_START_PX = int(os.environ.get("FACE_TRACK_Y_UP_START_PX", "30"))
 # Low-pass the vertical error to reject per-frame jitter that otherwise drives
 # tilt oscillation, same idea as the pan X filter.
 FACE_TRACK_Y_FILTER_ALPHA = float(os.environ.get("FACE_TRACK_Y_FILTER_ALPHA", "0.4"))
@@ -1979,19 +2017,34 @@ FACE_TRACK_KP_SPS_PER_PX = float(os.environ.get("FACE_TRACK_KP_SPS_PER_PX", "3.2
 # Absolute ceiling the user speed multiplier can never push pan beyond, so a
 # high "speed" setting cannot command an unsafe step rate for the motor.
 FACE_TRACK_MAX_SPS_HARD = int(os.environ.get("FACE_TRACK_MAX_SPS_HARD", "2000"))
+FACE_TRACK_ASSIST_MAX_RATIO = float(os.environ.get("FACE_TRACK_ASSIST_MAX_RATIO", "0.70"))
+FACE_TRACK_ASSIST_MIN_RATIO = float(os.environ.get("FACE_TRACK_ASSIST_MIN_RATIO", "0.60"))
 # Only push a new pan speed to the motor when it changes by at least this many
 # steps/s. Constant micro-adjustments rewrite the PWM frequency every loop and
 # cause the pulse train to stutter (visible as bouncing), so we quantize.
 FACE_TRACK_SPS_STEP = int(os.environ.get("FACE_TRACK_SPS_STEP", "60"))
 FACE_TRACK_X_FILTER_ALPHA = float(os.environ.get("FACE_TRACK_X_FILTER_ALPHA", "0.35"))
-FACE_TRACK_PAN_SIGN = int(os.environ.get("FACE_TRACK_PAN_SIGN", "1"))
+FACE_TRACK_ORBIT_FILTER_ALPHA = float(os.environ.get("FACE_TRACK_ORBIT_FILTER_ALPHA", "0.45"))
+FACE_TRACK_ACT_SCALE = {
+    1: float(os.environ.get("FACE_TRACK_M1_ACT_SCALE", "0.50")),
+    2: float(os.environ.get("FACE_TRACK_M2_ACT_SCALE", "0.80")),
+    3: float(os.environ.get("FACE_TRACK_M3_ACT_SCALE", "1.00")),
+    4: float(os.environ.get("FACE_TRACK_M4_ACT_SCALE", "0.85")),
+}
+# Lower bound for per-joint activation scaling derived from its X/Y mix.
+# Prevents weakly-weighted assist joints from never crossing the static
+# start-zone while still filtering tiny camera jitter.
+FACE_TRACK_MIX_ACT_MIN = float(os.environ.get("FACE_TRACK_MIX_ACT_MIN", "0.35"))
 FACE_TRACK_TILT_SIGN = int(os.environ.get("FACE_TRACK_TILT_SIGN", "-1"))
 FACE_TRACK_TILT_KP_DEG_PER_PX = float(os.environ.get("FACE_TRACK_TILT_KP_DEG_PER_PX", "0.03"))
 # Hard cap on how many degrees the tilt servo may move per control loop so a
 # large vertical error cannot fling the head; keeps tilt smooth and gentle.
 # The user tilt-speed multiplier scales THIS slew-rate cap (not the gain) so a
 # faster setting reaches a far face quicker without overshooting near centre.
-FACE_TRACK_TILT_MAX_STEP_DEG = float(os.environ.get("FACE_TRACK_TILT_MAX_STEP_DEG", "1.8"))
+FACE_TRACK_TILT_MAX_STEP_DEG = float(os.environ.get("FACE_TRACK_TILT_MAX_STEP_DEG", "2.6"))
+# Directional tilt gain/cap scaling for upward tracking (negative ey).
+FACE_TRACK_TILT_UP_GAIN = float(os.environ.get("FACE_TRACK_TILT_UP_GAIN", "1.72"))
+FACE_TRACK_TILT_UP_CAP_SCALE = float(os.environ.get("FACE_TRACK_TILT_UP_CAP_SCALE", "1.85"))
 FACE_TRACK_TILT_MIN = float(os.environ.get("FACE_TRACK_TILT_MIN", "-85"))
 FACE_TRACK_TILT_MAX = float(os.environ.get("FACE_TRACK_TILT_MAX", "85"))
 FACE_TRACK_LOST_HOLD_S = float(os.environ.get("FACE_TRACK_LOST_HOLD_S", "0.8"))
@@ -2021,20 +2074,24 @@ class FaceTracker:
             "has_face": False,
             "face_center": None,
             "error_px": [0, 0],
-            "motor_id": FACE_TRACK_MOTOR_ID,
+            "motor_ids": list(FACE_TRACK_MOTOR_IDS),
             "servo_id": FACE_TRACK_SERVO_ID,
             "motor_ready": False,
             "servo_ready": False,
             "motor_sps": 0,
+            "motor_sps_map": {},
             "servo_angle": 0.0,
             "updated": 0.0,
             "error": None,
         }
-        self._pan_active = False
-        self._pan_err_f = 0.0
-        self._pan_dir = None
-        self._pan_last_sps = 0
-        self._saved_motor_state = None
+        self._motor_active = {mid: False for mid in FACE_TRACK_MOTOR_IDS}
+        self._motor_err_f = {mid: 0.0 for mid in FACE_TRACK_MOTOR_IDS}
+        self._motor_dir = {mid: None for mid in FACE_TRACK_MOTOR_IDS}
+        self._motor_last_sps = {mid: 0 for mid in FACE_TRACK_MOTOR_IDS}
+        self._saved_motor_state = {}
+        self._prev_ex = None
+        self._prev_ey = None
+        self._orbit_err_f = 0.0
         # Filtered vertical error + tilt hysteresis state (anti-oscillation).
         self._tilt_err_f = 0.0
         self._tilt_active = False
@@ -2094,53 +2151,58 @@ class FaceTracker:
             self._state["tilt_max"] = self._tilt_max
             return {"tilt_min": self._tilt_min, "tilt_max": self._tilt_max}
 
-    def _save_motor_state_if_needed(self, motor):
-        if motor is None or self._saved_motor_state is not None:
+    def _tracked_motors(self):
+        return {mid: motors[mid] for mid in FACE_TRACK_MOTOR_IDS if mid in motors}
+
+    def _save_motor_state_if_needed(self, mid, motor):
+        if motor is None or mid in self._saved_motor_state:
             return
-        self._saved_motor_state = {
+        self._saved_motor_state[mid] = {
             "speed": int(getattr(motor, "speed", DEFAULT_SPEED)),
             "direction": getattr(motor, "direction", "cw"),
             "accel": int(getattr(motor, "accel", DEFAULT_ACCEL)),
             "enabled": bool(getattr(motor, "enabled", False)),
         }
 
-    def _restore_motor_state(self, motor):
-        if motor is None or self._saved_motor_state is None:
+    def _restore_motor_state(self, mid, motor):
+        if motor is None or mid not in self._saved_motor_state:
             return
+        saved = self._saved_motor_state.get(mid, {})
         try:
-            motor.set_speed(self._saved_motor_state.get("speed", DEFAULT_SPEED))
+            motor.set_speed(saved.get("speed", DEFAULT_SPEED))
         except Exception:
             pass
         try:
-            motor.set_direction(self._saved_motor_state.get("direction", "cw"))
+            motor.set_direction(saved.get("direction", "cw"))
         except Exception:
             pass
         try:
-            motor.set_accel(self._saved_motor_state.get("accel", DEFAULT_ACCEL))
+            motor.set_accel(saved.get("accel", DEFAULT_ACCEL))
         except Exception:
             pass
         try:
-            if not self._saved_motor_state.get("enabled", False):
+            if not saved.get("enabled", False):
                 motor.disable(soft=True)
         except Exception:
             pass
-        self._saved_motor_state = None
+        self._saved_motor_state.pop(mid, None)
 
     def _prepare_outputs(self):
         motor_ready = False
         servo_ready = False
 
-        m = motors.get(FACE_TRACK_MOTOR_ID)
-        if m is not None:
+        tracked = self._tracked_motors()
+        for mid, m in tracked.items():
             try:
-                self._save_motor_state_if_needed(m)
+                self._save_motor_state_if_needed(mid, m)
+                # Preload tracker motion params but DO NOT enable/hold here;
+                # ownership stays with jog/manual control until a face command
+                # actually asks this motor to move.
                 m.set_accel(FACE_TRACK_PREP_ACCEL)
                 m.set_speed(FACE_TRACK_PREP_SPEED)
-                m.enable()
-                m.hold()
                 motor_ready = True
             except Exception:
-                motor_ready = False
+                continue
 
         if FACE_TRACK_SERVO_ID in servos:
             with servo_lock:
@@ -2185,18 +2247,24 @@ class FaceTracker:
             self._state["updated"] = round(time.time(), 3)
 
     def _stop_outputs(self, restore_motor=True, mark_not_ready=True):
-        m = motors.get(FACE_TRACK_MOTOR_ID)
-        if m is not None:
-            try:
-                m.hold()
-            except Exception:
-                pass
+        tracked = self._tracked_motors()
+        for mid, m in tracked.items():
+            # Only force HOLD for motors currently driven by the tracker.
+            # Calling hold() on inactive motors can steal them from jog control.
+            if self._motor_active.get(mid, False):
+                try:
+                    m.hold()
+                except Exception:
+                    pass
             if restore_motor:
-                self._restore_motor_state(m)
-        self._pan_active = False
-        self._pan_err_f = 0.0
-        self._pan_dir = None
-        self._pan_last_sps = 0
+                self._restore_motor_state(mid, m)
+            self._motor_active[mid] = False
+            self._motor_err_f[mid] = 0.0
+            self._motor_dir[mid] = None
+            self._motor_last_sps[mid] = 0
+        self._prev_ex = None
+        self._prev_ey = None
+        self._orbit_err_f = 0.0
         self._tilt_err_f = 0.0
         self._tilt_active = False
         if mark_not_ready:
@@ -2244,88 +2312,122 @@ class FaceTracker:
                 ex = int(cx - (CAMERA_WIDTH // 2))
                 ey = int(cy - (CAMERA_HEIGHT // 2))
 
-                # Pan with Motor 1 using momentary jog control.
-                m = motors.get(FACE_TRACK_MOTOR_ID)
-                motor_sps = 0
-                if m is not None:
-                    # Filter pixel jitter and add hysteresis so pan does not
-                    # chatter between hold/move near the frame center.
-                    alpha = max(0.0, min(1.0, FACE_TRACK_X_FILTER_ALPHA))
-                    self._pan_err_f = (1.0 - alpha) * self._pan_err_f + alpha * float(ex)
-                    ex_cmd = int(round(self._pan_err_f))
+                # Multi-joint head tracking: all configured motors participate
+                # using a weighted X/Y error mix per motor.
+                motor_sps_map = {}
+                tracked = self._tracked_motors()
+                alpha = max(0.0, min(1.0, FACE_TRACK_X_FILTER_ALPHA))
+                orbit_alpha = max(0.0, min(1.0, FACE_TRACK_ORBIT_FILTER_ALPHA))
+                stop_zone = max(0, int(FACE_TRACK_X_DEADZONE_PX))
+                start_zone = max(stop_zone + 1, int(FACE_TRACK_X_START_PX))
 
-                    stop_zone = max(0, int(FACE_TRACK_X_DEADZONE_PX))
-                    start_zone = max(stop_zone + 1, int(FACE_TRACK_X_START_PX))
+                # Orbital component: detects circular head motion around frame
+                # center via the signed tangent speed term.
+                if self._prev_ex is None or self._prev_ey is None:
+                    d_ex, d_ey = 0.0, 0.0
+                else:
+                    d_ex = float(ex - self._prev_ex)
+                    d_ey = float(ey - self._prev_ey)
+                radius = max(1.0, math.hypot(float(ex), float(ey)))
+                orbit_raw = ((float(ex) * d_ey) - (float(ey) * d_ex)) / radius
+                self._orbit_err_f = ((1.0 - orbit_alpha) * self._orbit_err_f) + (orbit_alpha * orbit_raw)
+                self._prev_ex = ex
+                self._prev_ey = ey
 
-                    if self._pan_active:
-                        should_move = abs(ex_cmd) > stop_zone
-                    else:
-                        should_move = abs(ex_cmd) >= start_zone
+                for mid, m in tracked.items():
+                    try:
+                        mix_x = float(FACE_TRACK_MIX_X.get(mid, 0.0))
+                        mix_y = float(FACE_TRACK_MIX_Y.get(mid, 0.0))
+                        mix_r = float(FACE_TRACK_MIX_ROT.get(mid, 0.0))
+                        mix_mag = max(
+                            FACE_TRACK_MIX_ACT_MIN,
+                            min(1.0, abs(mix_x) + abs(mix_y) + (0.5 * abs(mix_r))),
+                        )
+                        act_scale = max(0.45, min(1.10, float(FACE_TRACK_ACT_SCALE.get(mid, 1.0))))
+                        cmd_raw = (float(ex) * mix_x) + (float(ey) * mix_y) + (self._orbit_err_f * mix_r)
+                        self._motor_err_f[mid] = (
+                            (1.0 - alpha) * self._motor_err_f.get(mid, 0.0)
+                            + alpha * cmd_raw
+                        )
+                        cmd = int(round(self._motor_err_f[mid]))
 
-                    if not should_move:
-                        if self._pan_active:
-                            try:
-                                m.hold()
-                            except Exception:
-                                pass
-                        self._pan_active = False
-                        self._pan_dir = None
-                        self._pan_last_sps = 0
-                    else:
-                        try:
-                            self._save_motor_state_if_needed(m)
-                            direction = "cw" if (ex_cmd * FACE_TRACK_PAN_SIGN) > 0 else "ccw"
-                            # Apply the user pan-speed multiplier to both the
-                            # gain and the max step rate (clamped to a hard
-                            # ceiling so the slider can never overspeed Motor 3).
-                            kp = FACE_TRACK_KP_SPS_PER_PX * pan_speed
-                            max_sps = min(
-                                FACE_TRACK_MAX_SPS_HARD,
-                                int(FACE_TRACK_MAX_SPS * pan_speed),
-                            )
-                            motor_sps = int(min(
-                                max_sps,
-                                max(FACE_TRACK_MIN_SPS,
-                                    FACE_TRACK_MIN_SPS + abs(ex_cmd) * kp),
-                            ))
-                            if not self._pan_active:
-                                # Engage ONCE on the start transition. Calling
-                                # enable()/run_pulses() every loop re-sets the
-                                # pause flag and races the worker thread, which
-                                # makes the motor bounce. So we only do it here.
+                        # Scale per-joint hysteresis by mix magnitude so all
+                        # configured joints can engage, not only the dominant pan motor.
+                        stop_zone_m = max(8, int(round(stop_zone * mix_mag * act_scale)))
+                        start_zone_m = max(stop_zone_m + 1, int(round(start_zone * mix_mag)))
+                        start_zone_m = max(stop_zone_m + 1, int(round(start_zone * mix_mag * act_scale)))
+
+                        if self._motor_active.get(mid, False):
+                            should_move = abs(cmd) > stop_zone_m
+                        else:
+                            should_move = abs(cmd) >= start_zone_m
+
+                        if not should_move:
+                            if self._motor_active.get(mid, False):
+                                try:
+                                    m.hold()
+                                except Exception:
+                                    pass
+                            self._motor_active[mid] = False
+                            self._motor_dir[mid] = None
+                            self._motor_last_sps[mid] = 0
+                            motor_sps_map[str(mid)] = 0
+                            continue
+
+                        self._save_motor_state_if_needed(mid, m)
+                        sign = int(FACE_TRACK_MOTOR_SIGN.get(mid, 1))
+                        direction = "cw" if (cmd * sign) > 0 else "ccw"
+                        kp = FACE_TRACK_KP_SPS_PER_PX * pan_speed * max(0.35, abs(mix_x) + abs(mix_y))
+                        is_primary = (mid == 3)
+                        max_ratio = 1.0 if is_primary else FACE_TRACK_ASSIST_MAX_RATIO
+                        min_ratio = 1.0 if is_primary else FACE_TRACK_ASSIST_MIN_RATIO
+                        max_sps = min(
+                            FACE_TRACK_MAX_SPS_HARD,
+                            int(FACE_TRACK_MAX_SPS * pan_speed * max_ratio),
+                        )
+                        min_sps = int(max(60, FACE_TRACK_MIN_SPS * min_ratio))
+                        motor_sps = int(min(
+                            max_sps,
+                            max(min_sps, min_sps + abs(cmd) * kp),
+                        ))
+                        if not self._motor_active.get(mid, False):
+                            m.set_direction(direction)
+                            m.set_speed(motor_sps)
+                            m.enable()
+                            m.run_pulses()
+                            self._motor_active[mid] = True
+                            self._motor_dir[mid] = direction
+                            self._motor_last_sps[mid] = motor_sps
+                        else:
+                            if direction != self._motor_dir.get(mid):
                                 m.set_direction(direction)
+                                self._motor_dir[mid] = direction
+                            if abs(motor_sps - self._motor_last_sps.get(mid, 0)) >= FACE_TRACK_SPS_STEP:
                                 m.set_speed(motor_sps)
-                                m.enable()
-                                m.run_pulses()
-                                self._pan_active = True
-                                self._pan_dir = direction
-                                self._pan_last_sps = motor_sps
+                                self._motor_last_sps[mid] = motor_sps
                             else:
-                                # Already streaming pulses: only nudge the
-                                # direction or speed when they actually change
-                                # enough, leaving the pulse train untouched
-                                # otherwise so it stays rock-solid.
-                                if direction != self._pan_dir:
-                                    m.set_direction(direction)
-                                    self._pan_dir = direction
-                                if abs(motor_sps - self._pan_last_sps) >= FACE_TRACK_SPS_STEP:
-                                    m.set_speed(motor_sps)
-                                    self._pan_last_sps = motor_sps
-                                else:
-                                    motor_sps = self._pan_last_sps
-                        except Exception as exc:
-                            self._set_state(error=str(exc))
+                                motor_sps = self._motor_last_sps.get(mid, motor_sps)
+                        motor_sps_map[str(mid)] = int(motor_sps)
+                    except Exception as exc:
+                        motor_sps_map[str(mid)] = 0
+                        self._set_state(error=str(exc))
 
                 # Tilt with Axis 5 servo.
                 servo_angle = servo_angles.get(FACE_TRACK_SERVO_ID, 0.0)
                 if FACE_TRACK_SERVO_ID in servos and servo_enabled.get(FACE_TRACK_SERVO_ID, False):
                     # Low-pass the vertical error to reject per-frame jitter.
                     ya = max(0.0, min(1.0, FACE_TRACK_Y_FILTER_ALPHA))
-                    self._tilt_err_f = (1.0 - ya) * self._tilt_err_f + ya * float(ey)
+                    ey_tgt = float(ey) - float(FACE_TRACK_Y_TARGET_OFFSET_PX)
+                    self._tilt_err_f = (1.0 - ya) * self._tilt_err_f + ya * ey_tgt
                     eyf = self._tilt_err_f
 
-                    stop_zone = max(0, int(FACE_TRACK_Y_DEADZONE_PX))
-                    start_zone = max(stop_zone + 1, int(FACE_TRACK_Y_START_PX))
+                    is_up = (eyf < 0.0)
+                    if is_up:
+                        stop_zone = max(0, int(FACE_TRACK_Y_UP_DEADZONE_PX))
+                        start_zone = max(stop_zone + 1, int(FACE_TRACK_Y_UP_START_PX))
+                    else:
+                        stop_zone = max(0, int(FACE_TRACK_Y_DEADZONE_PX))
+                        start_zone = max(stop_zone + 1, int(FACE_TRACK_Y_START_PX))
                     if self._tilt_active:
                         tilt_should_move = abs(eyf) > stop_zone
                     else:
@@ -2337,8 +2439,11 @@ class FaceTracker:
                         # user tilt-speed only raises the per-loop slew cap so a
                         # far face is reached faster WITHOUT overshooting near
                         # centre (overshoot was the up/down oscillation).
-                        delta = -FACE_TRACK_TILT_SIGN * eyf * FACE_TRACK_TILT_KP_DEG_PER_PX
-                        tilt_cap = FACE_TRACK_TILT_MAX_STEP_DEG * tilt_speed
+                        kp = FACE_TRACK_TILT_KP_DEG_PER_PX * (FACE_TRACK_TILT_UP_GAIN if is_up else 1.0)
+                        delta = -FACE_TRACK_TILT_SIGN * eyf * kp
+                        tilt_cap = FACE_TRACK_TILT_MAX_STEP_DEG * tilt_speed * (
+                            FACE_TRACK_TILT_UP_CAP_SCALE if is_up else 1.0
+                        )
                         if delta > tilt_cap:
                             delta = tilt_cap
                         elif delta < -tilt_cap:
@@ -2361,7 +2466,8 @@ class FaceTracker:
                     has_face=True,
                     face_center=[cx, cy],
                     error_px=[ex, ey],
-                    motor_sps=int(motor_sps),
+                    motor_sps=max([int(v) for v in motor_sps_map.values()] or [0]),
+                    motor_sps_map=motor_sps_map,
                     servo_angle=round(float(servo_angle), 2),
                     error=None,
                 )
@@ -2370,7 +2476,14 @@ class FaceTracker:
                     # Keep tracker outputs prepared while face is temporarily
                     # lost so re-acquisition resumes immediately.
                     self._stop_outputs(restore_motor=False, mark_not_ready=False)
-                self._set_state(live=True, has_face=False, face_center=None, error_px=[0, 0], motor_sps=0)
+                self._set_state(
+                    live=True,
+                    has_face=False,
+                    face_center=None,
+                    error_px=[0, 0],
+                    motor_sps=0,
+                    motor_sps_map={str(mid): 0 for mid in FACE_TRACK_MOTOR_IDS},
+                )
 
             time.sleep(FACE_TRACK_LOOP_DT)
 
@@ -3058,9 +3171,9 @@ def motor_jog(mid):
     data = request.get_json(silent=True) or {}
     on = _as_bool(data.get("on", True), default=True)
     if on:
-        # Motor 1 is also used by face tracking (pan). Manual jog takes
+        # Head tracking can use multiple motors. Manual jog always takes
         # priority so the operator never fights the tracker.
-        if mid == FACE_TRACK_MOTOR_ID:
+        if mid in FACE_TRACK_MOTOR_IDS:
             face_tracker.stop()
         direction = data.get("direction")
         if direction is not None:
