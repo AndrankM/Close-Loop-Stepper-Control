@@ -412,10 +412,17 @@ MOTOR4_GEAR_RATIO = 1.0
 # Motor 2 dedicated Hall end-stops:
 #   CW  limit -> GPIO 5
 #   CCW limit -> GPIO 6
-# Hall sensors are wired active-low: idle HIGH, trigger pulls input to 0V.
+# Default: active-low (idle HIGH, trigger pulls to 0V).  If a sensor idles LOW
+# instead (active-HIGH wiring), flip the matching env var to 0 without touching
+# the code: M2_LIMIT_CW_ACTIVE_LOW=0 or M2_LIMIT_CCW_ACTIVE_LOW=0.
 M2_LIMIT_CW_PIN = 5
 M2_LIMIT_CCW_PIN = 6
-M2_LIMIT_ACTIVE_LOW = True
+M2_LIMIT_ACTIVE_LOW = True  # legacy fallback used if per-pin var is absent
+def _env_bool(name, default):
+    v = os.environ.get(name, "").strip().lower()
+    return default if v == "" else v not in ("0", "false", "no", "off")
+M2_LIMIT_CW_ACTIVE_LOW  = _env_bool("M2_LIMIT_CW_ACTIVE_LOW",  M2_LIMIT_ACTIVE_LOW)
+M2_LIMIT_CCW_ACTIVE_LOW = _env_bool("M2_LIMIT_CCW_ACTIVE_LOW", M2_LIMIT_ACTIVE_LOW)
 
 # Motor 3 end-stop limit switches. Both travel-limit switches share a SINGLE
 # GPIO line (GPIO 26): each is wired to 3.3V (the Pi GPIO is 3.3V only — never
@@ -517,7 +524,8 @@ class StepperMotor:
 
     def __init__(self, en_pin, stp_pin, dir_pin, gear_ratio=1.0,
                  limit_pin=None, limit_pin_cw=None, limit_pin_ccw=None,
-                 limit_active_low=False):
+                 limit_active_low=False,
+                 limit_cw_active_low=None, limit_ccw_active_low=None):
         self._lock = threading.Lock()
         self.enabled = False
         self.stopping = False
@@ -533,6 +541,10 @@ class StepperMotor:
         self.limit_stop = False
         self._blocked_dir = None
         self._limit_active_low = bool(limit_active_low)
+        # Per-direction polarity: allow CW and CCW sensors to be wired differently.
+        # Falls back to limit_active_low if not specified.
+        _cw_al  = limit_active_low if limit_cw_active_low  is None else limit_cw_active_low
+        _ccw_al = limit_active_low if limit_ccw_active_low is None else limit_ccw_active_low
         self._stop = threading.Event()
         self._soft_stop = threading.Event()
         # When set, the worker keeps the coils energized but emits no pulses
@@ -573,7 +585,7 @@ class StepperMotor:
             self._limit_cw = (
                 DigitalInputDevice(
                     limit_pin_cw,
-                    pull_up=self._limit_active_low,
+                    pull_up=bool(_cw_al),
                     bounce_time=0.005,
                 )
                 if limit_pin_cw is not None else None
@@ -581,7 +593,7 @@ class StepperMotor:
             self._limit_ccw = (
                 DigitalInputDevice(
                     limit_pin_ccw,
-                    pull_up=self._limit_active_low,
+                    pull_up=bool(_ccw_al),
                     bounce_time=0.005,
                 )
                 if limit_pin_ccw is not None else None
@@ -649,8 +661,17 @@ class StepperMotor:
             step_accel = self.accel * dt
             if self.current_speed < target:
                 self.current_speed = min(target, self.current_speed + step_accel)
+                # Skip the low-speed resonance band on ramp-up: jump from below
+                # STEP_STOP_SPS directly to STEP_START_SPS rather than crawling
+                # through it and causing vibration/chatter.
+                if STEP_STOP_SPS < self.current_speed < STEP_START_SPS:
+                    self.current_speed = min(target, float(STEP_START_SPS))
             elif self.current_speed > target:
                 self.current_speed = max(0.0, self.current_speed - step_accel)
+                # Cut to zero below STEP_STOP_SPS on a ramp-to-stop so the motor
+                # never lingers in the resonance band on deceleration.
+                if target <= 0.0 and 0.0 < self.current_speed <= STEP_STOP_SPS:
+                    self.current_speed = 0.0
 
             # A soft-stop fully ramps down, then exits the worker (de-energize).
             if soft and self.current_speed <= 0.0:
@@ -891,7 +912,8 @@ motors = {
         MOTOR2_GEAR_RATIO,
         limit_pin_cw=M2_LIMIT_CW_PIN,
         limit_pin_ccw=M2_LIMIT_CCW_PIN,
-        limit_active_low=M2_LIMIT_ACTIVE_LOW,
+        limit_cw_active_low=M2_LIMIT_CW_ACTIVE_LOW,
+        limit_ccw_active_low=M2_LIMIT_CCW_ACTIVE_LOW,
     ),
     3: StepperMotor(
         EN3_PIN, STP3_PIN, DIR3_PIN, MOTOR3_GEAR_RATIO, limit_pin=M3_LIMIT_PIN,
