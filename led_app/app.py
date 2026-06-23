@@ -411,13 +411,13 @@ MOTOR4_GEAR_RATIO = 1.0
 
 # Motor 2 dedicated Hall end-stops:
 #   CW  limit -> GPIO 5
-#   CCW limit -> GPIO 6
+#   CCW limit -> GPIO 11  (moved from GPIO 6 which is stuck LOW, 7 was busy)
 # Sensors are active-LOW: idle = 3.3 V, triggered (at limit) = 0 V.
 # pull_up=True (internal pull-up) → is_active when LOW.
 # Override per sensor via env var if wiring differs:
 #   M2_LIMIT_CW_ACTIVE_LOW=0  or  M2_LIMIT_CCW_ACTIVE_LOW=0
 M2_LIMIT_CW_PIN = 5
-M2_LIMIT_CCW_PIN = 6
+M2_LIMIT_CCW_PIN = 11
 M2_LIMIT_ACTIVE_LOW = True  # active-LOW sensors: is_active when pin = 0 V
 def _env_bool(name, default):
     v = os.environ.get(name, "").strip().lower()
@@ -546,6 +546,11 @@ class StepperMotor:
         # Falls back to limit_active_low if not specified.
         _cw_al  = limit_active_low if limit_cw_active_low  is None else limit_cw_active_low
         _ccw_al = limit_active_low if limit_ccw_active_low is None else limit_ccw_active_low
+        # Store polarity flags so _limit_pressed_cw/ccw can invert the raw value.
+        # The lgpio backend on Pi 5 does NOT invert is_active based on pull_up,
+        # so we must handle it ourselves: active-LOW → triggered when value=0.
+        self._cw_active_low  = bool(_cw_al)
+        self._ccw_active_low = bool(_ccw_al)
         self._stop = threading.Event()
         self._soft_stop = threading.Event()
         # When set, the worker keeps the coils energized but emits no pulses
@@ -862,13 +867,19 @@ class StepperMotor:
 
     def _limit_pressed_cw(self):
         try:
-            return self._limit_cw is not None and bool(self._limit_cw.is_active)
+            if self._limit_cw is None:
+                return False
+            raw = bool(self._limit_cw.value)
+            return (not raw) if self._cw_active_low else raw
         except Exception:
             return False
 
     def _limit_pressed_ccw(self):
         try:
-            return self._limit_ccw is not None and bool(self._limit_ccw.is_active)
+            if self._limit_ccw is None:
+                return False
+            raw = bool(self._limit_ccw.value)
+            return (not raw) if self._ccw_active_low else raw
         except Exception:
             return False
 
@@ -3282,6 +3293,25 @@ def motor_accel(mid):
     except (TypeError, ValueError):
         return jsonify({"error": "accel must be an integer"}), 400
     return jsonify(motor.status())
+
+
+@app.route("/motor/<int:mid>/limit_raw")
+def motor_limit_raw(mid):
+    """Raw GPIO debug: returns value and is_active for each limit sensor."""
+    motor = get_motor(mid)
+    if motor is None:
+        return jsonify({"error": "unknown motor"}), 404
+    out = {}
+    for name, dev in [("limit", motor._limit), ("limit_cw", motor._limit_cw), ("limit_ccw", motor._limit_ccw)]:
+        if dev is None:
+            out[name] = None
+        else:
+            try:
+                out[name] = {"value": dev.value, "is_active": dev.is_active, "pull_up": dev.pull_up}
+            except Exception as e:
+                out[name] = {"error": str(e)}
+    out["_blocked_dir"] = motor._blocked_dir
+    return jsonify(out)
 
 
 @app.route("/motor/<int:mid>/status")
