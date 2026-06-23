@@ -630,18 +630,21 @@ class StepperMotor:
             if self._limit_cw is not None or self._limit_ccw is not None:
                 pressed_cw = self._limit_pressed_cw()
                 pressed_ccw = self._limit_pressed_ccw()
-                if pressed_cw and not pressed_ccw:
+                if pressed_cw and pressed_ccw:
+                    # CW and CCW limits cannot both be active simultaneously —
+                    # treat as sensor noise / wiring fault and ignore both so
+                    # the motor is never locked by a spurious double-read.
+                    pressed_cw = False
+                    pressed_ccw = False
+                if pressed_cw:
                     self._blocked_dir = "cw"
-                elif pressed_ccw and not pressed_cw:
+                elif pressed_ccw:
                     self._blocked_dir = "ccw"
-                elif pressed_cw and pressed_ccw:
-                    self._blocked_dir = "both"
                 else:
                     self._blocked_dir = None
                 limited = (
                     (pressed_cw and self.direction == "cw")
                     or (pressed_ccw and self.direction == "ccw")
-                    or (self._blocked_dir == "both")
                 )
             else:
                 pressed = self._limit_pressed()
@@ -872,15 +875,15 @@ class StepperMotor:
         """End-stop info, or None if this motor has no limit switch."""
         if self._limit is None and self._limit_cw is None and self._limit_ccw is None:
             return None
-        pressed_cw = self._limit_pressed_cw()
-        pressed_ccw = self._limit_pressed_ccw()
-        pressed_shared = self._limit_pressed()
+        # Report the state the _run() thread is actually acting on, not a
+        # fresh live re-read that can disagree with it and cause UI flicker.
+        bd = self._blocked_dir
         return {
-            "pressed": bool(pressed_shared or pressed_cw or pressed_ccw),
-            "blocked_dir": self._blocked_dir,
-            "cw": pressed_cw,
-            "ccw": pressed_ccw,
-            "shared": pressed_shared,
+            "pressed": bd is not None,
+            "blocked_dir": bd,
+            "cw": bd == "cw",
+            "ccw": bd == "ccw",
+            "shared": self._limit_pressed() if self._limit is not None else False,
         }
 
     def status(self):
