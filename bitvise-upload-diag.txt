@@ -1,0 +1,1 @@
+put -o "d:\Git CLones\PI SSH Test\diag.sh" /tmp/diag.sh

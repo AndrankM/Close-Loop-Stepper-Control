@@ -1,0 +1,173 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="640" viewBox="0 0 900 640" font-family="Segoe UI, Arial, sans-serif">
+  <!-- background -->
+  <rect width="900" height="640" fill="#0a0e17"/>
+
+  <!-- title -->
+  <text x="32" y="42" fill="#e5e7eb" font-size="22" font-weight="700">Teach &amp; Playback &#8212; saving movement coordinates</text>
+  <text x="32" y="66" fill="#6b7280" font-size="13">Record encoder poses, then replay them as coordinated motion</text>
+
+  <!-- panel card -->
+  <rect x="24" y="86" width="852" height="520" rx="12" fill="#0d1320" stroke="#1f2937" stroke-width="1.5"/>
+
+  <text x="48" y="120" fill="#e5e7eb" font-size="16" font-weight="600">Teach &amp; Playback</text>
+
+  <!-- toolbar -->
+  <g font-size="13" font-weight="600">
+    <!-- Free-drive -->
+    <rect x="48" y="138" width="138" height="34" rx="7" fill="#92400e" stroke="#b45309"/>
+    <text x="117" y="160" fill="#fff" text-anchor="middle">Free-drive: OFF</text>
+    <!-- Record -->
+    <rect x="196" y="138" width="170" height="34" rx="7" fill="#1f2937" stroke="#374151"/>
+    <text x="281" y="160" fill="#e5e7eb" text-anchor="middle">&#9679; Record Waypoint</text>
+    <!-- Play -->
+    <rect x="376" y="138" width="86" height="34" rx="7" fill="#0e7490" stroke="#0e7490"/>
+    <text x="419" y="160" fill="#fff" text-anchor="middle">&#9654; Play</text>
+    <!-- Stop -->
+    <rect x="472" y="138" width="86" height="34" rx="7" fill="#7f1d1d" stroke="#7f1d1d"/>
+    <text x="515" y="160" fill="#fff" text-anchor="middle">&#9632; Stop</text>
+    <!-- Clear -->
+    <rect x="568" y="138" width="92" height="34" rx="7" fill="#1f2937" stroke="#374151"/>
+    <text x="614" y="160" fill="#e5e7eb" text-anchor="middle">Clear All</text>
+  </g>
+
+  <!-- callouts on toolbar -->
+  <text x="117" y="190" fill="#f59e0b" font-size="11" text-anchor="middle">hand-guide arm</text>
+  <text x="281" y="190" fill="#9ca3af" font-size="11" text-anchor="middle">&#8595; saves current joint coordinates</text>
+
+  <!-- settings -->
+  <g font-size="12.5" fill="#9ca3af">
+    <text x="48" y="222">Speed</text>
+    <rect x="92" y="212" width="120" height="6" rx="3" fill="#374151"/>
+    <circle cx="164" cy="215" r="7" fill="#0e7490"/>
+    <text x="222" y="222" fill="#e5e7eb">60%</text>
+
+    <text x="280" y="222">Loops</text>
+    <rect x="320" y="208" width="48" height="22" rx="5" fill="#111827" stroke="#374151"/>
+    <text x="344" y="223" fill="#e5e7eb" text-anchor="middle">1</text>
+    <text x="376" y="222" font-size="11">(0 = &#8734;)</text>
+
+    <text x="450" y="222">Dwell</text>
+    <rect x="490" y="208" width="48" height="22" rx="5" fill="#111827" stroke="#374151"/>
+    <text x="514" y="223" fill="#e5e7eb" text-anchor="middle">0.5</text>
+    <text x="546" y="222">s</text>
+  </g>
+
+  <!-- program persistence -->
+  <g font-size="12.5">
+    <rect x="48" y="248" width="180" height="28" rx="6" fill="#111827" stroke="#374151"/>
+    <text x="60" y="266" fill="#6b7280">program name</text>
+    <rect x="238" y="248" width="62" height="28" rx="6" fill="#1f2937" stroke="#374151"/>
+    <text x="269" y="266" fill="#e5e7eb" text-anchor="middle" font-weight="600">Save</text>
+    <rect x="310" y="248" width="190" height="28" rx="6" fill="#111827" stroke="#374151"/>
+    <text x="322" y="266" fill="#6b7280">&#8212; saved programs &#8212;</text>
+    <rect x="510" y="248" width="62" height="28" rx="6" fill="#1f2937" stroke="#374151"/>
+    <text x="541" y="266" fill="#e5e7eb" text-anchor="middle" font-weight="600">Load</text>
+    <rect x="582" y="248" width="72" height="28" rx="6" fill="#7f1d1d" stroke="#7f1d1d"/>
+    <text x="618" y="266" fill="#fff" text-anchor="middle" font-weight="600">Delete</text>
+  </g>
+  <text x="664" y="266" fill="#9ca3af" font-size="11">&#8592; persist as JSON on the Pi</text>
+
+  <!-- status line -->
+  <circle cx="56" cy="298" r="5" fill="#22c55e"/>
+  <text x="70" y="302" fill="#9ca3af" font-size="12.5">moving to waypoint 2 &#183; loop 1/1</text>
+
+  <!-- waypoint table -->
+  <g font-size="12.5">
+    <!-- header row -->
+    <line x1="48" y1="322" x2="828" y2="322" stroke="#1f2937"/>
+    <g fill="#6b7280">
+      <text x="56" y="344">#</text>
+      <text x="180" y="344" text-anchor="end">J1 (&#176;)</text>
+      <text x="300" y="344" text-anchor="end">J2 (&#176;)</text>
+      <text x="420" y="344" text-anchor="end">J3 (&#176;)</text>
+      <text x="540" y="344" text-anchor="end">J4 (&#176;)</text>
+      <text x="640" y="344" text-anchor="end">Dwell s</text>
+      <text x="760" y="344" text-anchor="middle">Actions</text>
+    </g>
+    <line x1="48" y1="352" x2="828" y2="352" stroke="#1f2937"/>
+
+    <!-- row 1 -->
+    <g fill="#cbd5e1">
+      <text x="56" y="378">1</text>
+      <text x="180" y="378" text-anchor="end">12.4</text>
+      <text x="300" y="378" text-anchor="end">88.1</text>
+      <text x="420" y="378" text-anchor="end">-34.0</text>
+      <text x="540" y="378" text-anchor="end">5.2</text>
+    </g>
+    <rect x="602" y="364" width="46" height="20" rx="5" fill="#111827" stroke="#374151"/>
+    <text x="625" y="378" fill="#e5e7eb" text-anchor="middle" font-size="11">def</text>
+    <rect x="704" y="362" width="44" height="22" rx="5" fill="#1f2937" stroke="#374151"/>
+    <text x="726" y="377" fill="#e5e7eb" text-anchor="middle" font-size="11" font-weight="600">Go</text>
+    <rect x="756" y="362" width="44" height="22" rx="5" fill="#7f1d1d" stroke="#7f1d1d"/>
+    <text x="778" y="377" fill="#fff" text-anchor="middle" font-size="11" font-weight="600">Del</text>
+    <line x1="48" y1="392" x2="828" y2="392" stroke="#1f2937"/>
+
+    <!-- row 2 (current/highlighted) -->
+    <rect x="48" y="392" width="780" height="32" fill="#13233a"/>
+    <g fill="#cbd5e1">
+      <text x="56" y="412">2</text>
+      <text x="180" y="412" text-anchor="end">45.0</text>
+      <text x="300" y="412" text-anchor="end">90.3</text>
+      <text x="420" y="412" text-anchor="end">-10.7</text>
+      <text x="540" y="412" text-anchor="end">22.9</text>
+    </g>
+    <rect x="602" y="398" width="46" height="20" rx="5" fill="#111827" stroke="#374151"/>
+    <text x="625" y="412" fill="#e5e7eb" text-anchor="middle" font-size="11">1.0</text>
+    <rect x="704" y="396" width="44" height="22" rx="5" fill="#1f2937" stroke="#374151"/>
+    <text x="726" y="411" fill="#e5e7eb" text-anchor="middle" font-size="11" font-weight="600">Go</text>
+    <rect x="756" y="396" width="44" height="22" rx="5" fill="#7f1d1d" stroke="#7f1d1d"/>
+    <text x="778" y="411" fill="#fff" text-anchor="middle" font-size="11" font-weight="600">Del</text>
+    <line x1="48" y1="424" x2="828" y2="424" stroke="#1f2937"/>
+
+    <!-- row 3 -->
+    <g fill="#cbd5e1">
+      <text x="56" y="446">3</text>
+      <text x="180" y="446" text-anchor="end">90.0</text>
+      <text x="300" y="446" text-anchor="end">45.6</text>
+      <text x="420" y="446" text-anchor="end">12.3</text>
+      <text x="540" y="446" text-anchor="end">-40.1</text>
+    </g>
+    <rect x="602" y="432" width="46" height="20" rx="5" fill="#111827" stroke="#374151"/>
+    <text x="625" y="446" fill="#e5e7eb" text-anchor="middle" font-size="11">2.5</text>
+    <rect x="704" y="430" width="44" height="22" rx="5" fill="#1f2937" stroke="#374151"/>
+    <text x="726" y="445" fill="#e5e7eb" text-anchor="middle" font-size="11" font-weight="600">Go</text>
+    <rect x="756" y="430" width="44" height="22" rx="5" fill="#7f1d1d" stroke="#7f1d1d"/>
+    <text x="778" y="445" fill="#fff" text-anchor="middle" font-size="11" font-weight="600">Del</text>
+    <line x1="48" y1="458" x2="828" y2="458" stroke="#1f2937"/>
+  </g>
+
+  <!-- annotation: each row = one saved coordinate set -->
+  <text x="48" y="486" fill="#9ca3af" font-size="11.5">Each row = one recorded waypoint (the 4 joint encoder coordinates + optional dwell)</text>
+
+  <!-- flow strip -->
+  <g font-size="12" font-weight="600">
+    <rect x="48" y="508" width="150" height="64" rx="8" fill="#0f1b2e" stroke="#1e3a5f"/>
+    <text x="123" y="534" fill="#7dd3fc" text-anchor="middle">1. Position arm</text>
+    <text x="123" y="552" fill="#64748b" text-anchor="middle" font-size="10.5" font-weight="400">free-drive or jog</text>
+
+    <rect x="226" y="508" width="150" height="64" rx="8" fill="#0f1b2e" stroke="#1e3a5f"/>
+    <text x="301" y="534" fill="#7dd3fc" text-anchor="middle">2. Record</text>
+    <text x="301" y="552" fill="#64748b" text-anchor="middle" font-size="10.5" font-weight="400">capture coordinates</text>
+
+    <rect x="404" y="508" width="150" height="64" rx="8" fill="#0f1b2e" stroke="#1e3a5f"/>
+    <text x="479" y="534" fill="#7dd3fc" text-anchor="middle">3. Save program</text>
+    <text x="479" y="552" fill="#64748b" text-anchor="middle" font-size="10.5" font-weight="400">JSON on the Pi</text>
+
+    <rect x="582" y="508" width="150" height="64" rx="8" fill="#0f1b2e" stroke="#1e3a5f"/>
+    <text x="657" y="534" fill="#7dd3fc" text-anchor="middle">4. Play back</text>
+    <text x="657" y="552" fill="#64748b" text-anchor="middle" font-size="10.5" font-weight="400">coordinated motion</text>
+
+    <!-- arrows -->
+    <g stroke="#1e3a5f" stroke-width="2" fill="none">
+      <path d="M198 540 L226 540" marker-end="url(#arr)"/>
+      <path d="M376 540 L404 540" marker-end="url(#arr)"/>
+      <path d="M554 540 L582 540" marker-end="url(#arr)"/>
+    </g>
+  </g>
+
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#1e3a5f"/>
+    </marker>
+  </defs>
+</svg>

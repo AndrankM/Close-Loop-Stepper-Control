@@ -1,0 +1,2869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Closed-Loop Stepper Control</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f1117;
+      color: #e0e0e0;
+      min-height: 100vh;
+      padding: 1.4rem 1.25rem 2rem;
+    }
+
+    .page-header {
+      text-align: center;
+      margin-bottom: 1.25rem;
+    }
+    .page-header h1 { margin-bottom: 0.4rem; }
+    .page-header .sub {
+      color: #5a6178;
+      font-size: 0.85rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    /* Global emergency stop: prominent header button + sticky floating one */
+    .btn-estop-all {
+      margin-top: 0.9rem;
+      background: #c0142b;
+      color: #fff;
+      border: 2px solid #ff5a6e;
+      border-radius: 10px;
+      padding: 0.75rem 1.8rem;
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      box-shadow: 0 0 0 0 rgba(192,20,43,0.6);
+      transition: background .12s, transform .05s;
+    }
+    .btn-estop-all:hover { background: #e01838; }
+    .btn-estop-all:active { transform: scale(0.97); }
+    .btn-estop-all.flash { animation: estopFlash 0.5s ease-out; }
+    @keyframes estopFlash {
+      0% { box-shadow: 0 0 0 0 rgba(255,90,110,0.9); }
+      100% { box-shadow: 0 0 0 22px rgba(255,90,110,0); }
+    }
+    .estop-float {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 1000;
+      margin-top: 0;
+    }
+
+    .cpu-temp {
+      font-size: 0.8rem;
+      color: #9fe6c2;
+      border: 1px solid #2a3650;
+      border-radius: 8px;
+      padding: 0.3rem 0.7rem;
+      font-variant-numeric: tabular-nums;
+      cursor: pointer;
+      user-select: none;
+    }
+    .cpu-temp.warm { color: #fbbf24; border-color: #5b4a12; }
+    .cpu-temp.hot  { color: #ff7676; border-color: #5b1a1a; }
+
+    /* Pi 5 health card */
+    .health-card {
+      max-width: 720px;
+      margin: 0 auto 1.25rem;
+      background: #161a26;
+      border: 1px solid #232838;
+      border-radius: 14px;
+      padding: 1rem 1.1rem;
+      text-align: left;
+    }
+    .health-card.hidden { display: none; }
+    .health-card .hc-title {
+      font-size: 0.9rem; font-weight: 600; color: #cdd3e1;
+      margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.5rem;
+    }
+    .health-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 0.7rem;
+    }
+    .hc-item {
+      background: #11151f; border: 1px solid #232838;
+      border-radius: 10px; padding: 0.6rem 0.7rem;
+    }
+    .hc-item .hc-label {
+      font-size: 0.68rem; letter-spacing: 0.05em; text-transform: uppercase;
+      color: #6b7280; margin-bottom: 0.25rem;
+    }
+    .hc-item .hc-value {
+      font-size: 1.1rem; font-weight: 700; color: #e6e9ef;
+      font-variant-numeric: tabular-nums;
+    }
+    .hc-item .hc-sub { font-size: 0.7rem; color: #7b8290; margin-top: 0.1rem; }
+    .hc-bar { height: 6px; background: #1c2130; border-radius: 999px; overflow: hidden; margin-top: 0.4rem; }
+    .hc-bar > span { display: block; height: 100%; width: 0%; border-radius: 999px; background: #34d399; transition: width 0.4s ease; }
+    .hc-bar > span.warm { background: #fbbf24; }
+    .hc-bar > span.hot  { background: #ff7676; }
+    .hc-power {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; gap: 0.6rem;
+      font-size: 0.8rem; padding: 0.55rem 0.7rem; border-radius: 10px;
+      background: #0e1a16; border: 1px solid #1c4a31; color: #9fe6c2;
+    }
+    .hc-power.bad { background: #1f0f0f; border-color: #5b1a1a; color: #ff9b9b; }
+    .hc-power .hc-dot { width: 9px; height: 9px; border-radius: 50%; background: #34d399; }
+    .hc-power.bad .hc-dot { background: #ff5a5a; }
+
+    h1 {
+      font-size: 1.8rem;
+      letter-spacing: 0.05em;
+      color: #a0cfff;
+    }
+
+    .units {
+      max-width: 1720px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.25rem;
+    }
+    @media (max-width: 1180px) {
+      .units { grid-template-columns: 1fr; }
+    }
+    .motor-unit {
+      background: #1a1d27;
+      border: 1px solid #2a2d3e;
+      border-radius: 14px;
+      padding: 1.1rem 1.35rem 1.35rem;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      display: flex;
+      flex-direction: column;
+    }
+    .unit-title {
+      font-size: 1.05rem;
+      color: #cfd6ee;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.85rem;
+      padding-bottom: 0.45rem;
+      border-bottom: 1px solid #2a2d3e;
+    }
+    .unit-title small { color: #5a6178; font-size: 0.74rem; letter-spacing: 0.04em; }
+
+    .unit-body {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 1.1rem;
+      align-items: stretch;
+      flex: 1;
+    }
+    @media (max-width: 760px) {
+      .unit-body { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: #161922;
+      border: 1px solid #242838;
+      border-radius: 12px;
+      padding: 1.05rem 1.2rem;
+      text-align: center;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .card-title {
+      font-size: 0.98rem;
+      letter-spacing: 0.04em;
+      color: #a0cfff;
+      margin-bottom: 0.9rem;
+      text-align: left;
+    }
+
+    button {
+      padding: 0.75rem 1.75rem;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    button:active { transform: scale(0.96); }
+    button:disabled { opacity: 0.4; cursor: default; }
+
+    /* --- Stepper motor card --- */
+    .motor-status {
+      font-size: 0.95rem;
+      margin-bottom: 0.55rem;
+      color: #888;
+    }
+    .motor-status span { font-weight: bold; }
+
+    .control-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.85rem;
+      gap: 0.75rem;
+    }
+    .control-row label {
+      font-size: 0.9rem;
+      color: #9aa4bf;
+      text-align: left;
+    }
+
+    .dir-toggle { display: flex; gap: 0.5rem; }
+
+    .jog-toggle { display: flex; gap: 0.5rem; }
+    .btn-jog {
+      padding: 0.5rem 1rem;
+      background: #2a2d3e;
+      color: #cfd6ee;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+    .btn-jog:hover { background: #34384d; }
+    .btn-jog.jogging { background: #00a86b; color: #fff; }
+
+    .limit-row {
+      display: flex; align-items: center; gap: 0.6rem;
+      margin: 0.25rem 0 1rem;
+    }
+    .limit-row > label { color: #8b93ad; font-size: 0.82rem; }
+    .limit-pill {
+      display: inline-flex; align-items: center; gap: 0.35rem;
+      padding: 0.28rem 0.6rem; border-radius: 999px;
+      background: #21283b; border: 1px solid #2a3650;
+      color: #8b93ad; font-size: 0.74rem; font-weight: 600;
+    }
+    .limit-pill .ld {
+      width: 9px; height: 9px; border-radius: 50%;
+      background: #39405a;
+    }
+    .limit-pill.pressed { background: #3a1414; border-color: #5b1a1a; color: #ff9b9b; }
+    .limit-pill.pressed .ld { background: #ff5a5a; box-shadow: 0 0 6px #ff5a5a; }
+
+    .speed-value {
+      font-weight: bold;
+      color: #a0cfff;
+      min-width: 4.5rem;
+      text-align: right;
+    }
+    input[type="range"] { width: 100%; accent-color: #4a78ff; }
+
+    .num-input {
+      width: 5.5rem;
+      padding: 0.4rem 0.5rem;
+      background: #12141c;
+      border: 1px solid #2a2d3e;
+      border-radius: 8px;
+      color: #e0e0e0;
+      font-size: 0.9rem;
+      text-align: right;
+    }
+    .geometry {
+      border-top: 1px solid #2a2d3e;
+      margin-top: 0.9rem;
+      padding-top: 0.9rem;
+    }
+
+    .btn-motor-on  { background: #00cc66; color: #000; }
+    .btn-motor-off { background: #e03e3e; color: #fff; }
+
+    .btn-estop {
+      width: 100%;
+      margin-top: 1rem;
+      background: #7a1d1d;
+      color: #ffd5d5;
+      border: 1px solid #b03030;
+      letter-spacing: 0.08em;
+    }
+
+    /* --- Servo motors --- */
+    .servo-card { margin-bottom: 1.5rem; }
+    .servo-unit {
+      padding: 1rem;
+      background: #0f1219;
+      border: 1px solid #2a3650;
+      border-radius: 8px;
+    }
+    .servo-unit .card-title { font-size: 0.95rem; margin-bottom: 0.75rem; }
+    .servo-slider {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .servo-slider label {
+      min-width: 3rem;
+      color: #9aa4bf;
+      font-size: 0.9rem;
+    }
+    .servo-slider input[type="range"] {
+      flex: 1;
+      accent-color: #4a78ff;
+    }
+    .servo-angle {
+      min-width: 3.5rem;
+      text-align: right;
+      color: #a0cfff;
+      font-weight: bold;
+      font-size: 0.9rem;
+    }
+    .servo-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    .servo-btn {
+      border: 1px solid #2a3650;
+      background: #1a2335;
+      color: #b8c2dd;
+      padding: 0.42rem 0.65rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .servo-btn.on {
+      background: #1f4f2f;
+      border-color: #2d8f50;
+      color: #d7ffe6;
+    }
+
+    /* --- Encoder card --- */
+    .encoder-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.6rem 1rem;
+      margin: 0.75rem 0 1rem;
+    }
+    .enc-cell { text-align: left; }
+    .enc-cell .enc-k {
+      font-size: 0.72rem;
+      color: #9aa4bf;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .enc-cell .enc-v {
+      font-size: 1.15rem;
+      font-weight: bold;
+      color: #a0cfff;
+    }
+    .enc-dial {
+      width: 74px; height: 74px;
+      margin: 0.2rem auto 0.6rem;
+      border-radius: 50%;
+      border: 3px solid #2a2d3e;
+      position: relative;
+      background: radial-gradient(circle at center, #161924, #0d0f16);
+    }
+    .enc-needle {
+      position: absolute;
+      left: 50%; top: 50%;
+      width: 3px; height: 30px;
+      background: #4a78ff;
+      transform-origin: bottom center;
+      transform: translate(-50%, -100%) rotate(0deg);
+      border-radius: 2px;
+      transition: transform 0.15s linear;
+    }
+    .enc-hub {
+      position: absolute; left: 50%; top: 50%;
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #4a78ff; transform: translate(-50%, -50%);
+    }
+    .enc-error { color: #e0863e; font-size: 0.8rem; }
+
+    .live-badge {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: #00ff88;
+      background: rgba(0,255,136,0.1);
+      border: 1px solid rgba(0,255,136,0.35);
+      border-radius: 20px;
+      padding: 0.25rem 0.7rem;
+    }
+    .live-badge.stale {
+      color: #e0863e;
+      background: rgba(224,134,62,0.1);
+      border-color: rgba(224,134,62,0.35);
+    }
+    @keyframes live-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+    .live-badge:not(.stale) { animation: live-pulse 1.4s ease-in-out infinite; }
+
+    .rev-counter {
+      background: #0d0f16;
+      border: 1px solid #2a2d3e;
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1rem;
+    }
+    .rev-counter-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.2rem;
+    }
+    .rev-counter-k {
+      font-size: 0.72rem;
+      color: #9aa4bf;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .rev-reset-btn {
+      background: #2a2d3e;
+      color: #cfd6ee;
+      padding: 0.25rem 0.7rem;
+      font-size: 0.72rem;
+      border-radius: 6px;
+    }
+    .rev-reset-btn:hover { background: #353952; }
+    .rev-counter-v {
+      font-size: 1.9rem;
+      font-weight: 800;
+      color: #a0cfff;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+
+    .enc-chart-wrap {
+      background: #0d0f16;
+      border: 1px solid #2a2d3e;
+      border-radius: 8px;
+      padding: 0.5rem;
+    }
+    .enc-chart-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.72rem;
+      color: #9aa4bf;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.35rem;
+    }
+    .enc-chart-head select {
+      background: #161924;
+      color: #cfd6ee;
+      border: 1px solid #2a2d3e;
+      border-radius: 4px;
+      padding: 0.15rem 0.4rem;
+      font-size: 0.72rem;
+    }
+
+    .encoder-layout {
+      display: grid;
+      grid-template-columns: 1fr;
+      grid-template-rows: auto 1fr;
+      gap: 0.85rem;
+      align-items: stretch;
+      flex: 1;
+    }
+    .encoder-readout { text-align: center; }
+    .encoder-plot { display: flex; flex-direction: column; min-height: 0; }
+    .encoder-plot .enc-chart-wrap { display: flex; flex-direction: column; flex: 1; }
+    .encoder-plot canvas { width: 100%; height: auto; flex: 1; min-height: 130px; display: block; }
+
+    /* ---- Teach & Playback panel ---- */
+    .teach {
+      margin-top: 1.5rem;
+      border: 1px solid #1f2937;
+      border-radius: 12px;
+      background: #0d1320;
+      padding: 1rem 1.15rem 1.2rem;
+      max-width: 1720px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .teach .card-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #e5e7eb;
+      margin-bottom: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .teach-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 0.9rem;
+    }
+    .teach-settings {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.1rem;
+      align-items: center;
+      margin-bottom: 0.9rem;
+      font-size: 0.8rem;
+      color: #9ca3af;
+    }
+    .teach-settings label { display: flex; align-items: center; gap: 0.4rem; }
+    .teach-settings input[type=number] {
+      width: 64px; background:#111827; border:1px solid #374151; color:#e5e7eb;
+      border-radius:6px; padding:3px 6px; font-size:0.8rem;
+    }
+    .teach-settings input[type=range] { vertical-align: middle; }
+    .teach-prog {
+      display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
+      margin-bottom: 0.9rem;
+    }
+    .teach-prog input[type=text], .teach-prog select {
+      background:#111827; border:1px solid #374151; color:#e5e7eb;
+      border-radius:6px; padding:5px 8px; font-size:0.8rem; min-width: 150px;
+    }
+    .btn-t {
+      background:#1f2937; color:#e5e7eb; border:1px solid #374151;
+      border-radius:7px; padding:6px 12px; font-size:0.8rem; cursor:pointer;
+      transition: background .15s, border-color .15s;
+    }
+    .btn-t:hover { background:#283344; }
+    .btn-t.primary { background:#0e7490; border-color:#0e7490; }
+    .btn-t.primary:hover { background:#0891b2; }
+    .btn-t.danger { background:#7f1d1d; border-color:#7f1d1d; }
+    .btn-t.danger:hover { background:#991b1b; }
+    .btn-t.warn { background:#92400e; border-color:#92400e; }
+    .btn-t.warn:hover { background:#b45309; }
+    .btn-t.active { background:#15803d; border-color:#15803d; }
+    .teach-status {
+      font-size: 0.8rem; color:#9ca3af; margin: 0.4rem 0 0.9rem;
+      min-height: 1.1rem;
+    }
+    .teach-status .dot {
+      display:inline-block; width:8px; height:8px; border-radius:50%;
+      background:#4b5563; margin-right:6px; vertical-align: middle;
+    }
+    .teach-status.playing .dot { background:#22c55e; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+    .wp-table { width:100%; border-collapse: collapse; font-size:0.8rem; }
+    .wp-table th, .wp-table td {
+      border-bottom:1px solid #1f2937; padding:6px 8px; text-align:right;
+      color:#cbd5e1;
+    }
+    .wp-table th { color:#6b7280; font-weight:500; text-align:right; }
+    .wp-table th:first-child, .wp-table td:first-child { text-align:left; }
+    .wp-table td.actions { text-align:center; white-space: nowrap; }
+    .wp-table tr.current td { background:#13233a; }
+    .wp-table input.dwell {
+      width:56px; background:#111827; border:1px solid #374151; color:#e5e7eb;
+      border-radius:5px; padding:2px 5px; font-size:0.78rem; text-align:right;
+    }
+    .wp-empty { color:#6b7280; font-style: italic; padding: 0.6rem 0; }
+
+    .footer {
+      margin-top: 1.5rem;
+      text-align: center;
+      font-size: 0.78rem;
+      color: #444;
+    }
+  /* ---- camera / emotion card ---- */
+  .cam-chip {
+    cursor: pointer; user-select: none;
+    color: #9fe6c2; font-size: 0.8rem;
+    border: 1px solid #244035; border-radius: 8px;
+    padding: 0.3rem 0.7rem; display: inline-block;
+    background: #11201a;
+  }
+  .cam-chip:hover { background: #16291f; }
+  .cam-card {
+    background: #161a26; border: 1px solid #232838; border-radius: 14px;
+    padding: 1rem; max-width: 1080px; margin: 0 auto 1.1rem;
+  }
+  .cam-card.hidden { display: none; }
+  .cam-card .cc-title {
+    display: flex; align-items: center; gap: 0.5rem;
+    font-size: 0.95rem; font-weight: 600; color: #cdd3e1; margin-bottom: 0.8rem;
+  }
+  .cc-dot {
+    width: 9px; height: 9px; border-radius: 50%; background: #ff4d4f;
+    box-shadow: 0 0 0 0 rgba(255,77,79,0.7); animation: ccpulse 1.4s infinite;
+  }
+  @keyframes ccpulse {
+    0% { box-shadow: 0 0 0 0 rgba(255,77,79,0.7); }
+    70% { box-shadow: 0 0 0 8px rgba(255,77,79,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,77,79,0); }
+  }
+  .cc-stage { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .cc-view {
+    position: relative; flex: 1 1 420px; aspect-ratio: 4 / 3;
+    background: #05070c; border-radius: 10px; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cc-view img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cc-placeholder { color: #46506a; font-size: 0.8rem; text-align: center; padding: 1rem; }
+  .cc-tag {
+    position: absolute; top: 10px; left: 10px;
+    background: rgba(0,0,0,0.55); color: #9fe6c2; font-size: 0.7rem;
+    padding: 0.2rem 0.55rem; border-radius: 6px; font-variant-numeric: tabular-nums;
+  }
+  .cc-fps {
+    position: absolute; top: 10px; right: 10px;
+    background: rgba(0,0,0,0.55); color: #cdd3e1; font-size: 0.7rem;
+    padding: 0.2rem 0.55rem; border-radius: 6px; font-variant-numeric: tabular-nums;
+  }
+  .cc-side { flex: 1 1 240px; min-width: 240px; }
+  .cc-verdict {
+    display: flex; align-items: center; gap: 0.8rem;
+    background: #11151f; border: 1px solid #232838; border-radius: 10px;
+    padding: 0.7rem 0.9rem; margin-bottom: 0.9rem;
+  }
+  .cc-verdict .emoji { font-size: 2rem; line-height: 1; }
+  .cc-verdict .label { font-size: 1.15rem; font-weight: 700; color: #e0e0e0; }
+  .cc-verdict .conf { color: #7b8290; font-size: 0.78rem; margin-top: 0.1rem; }
+  .cc-emo { margin-bottom: 0.55rem; }
+  .cc-emo .row { display: flex; justify-content: space-between; font-size: 0.78rem; margin-bottom: 0.22rem; }
+  .cc-emo .row .name { color: #cdd3e1; }
+  .cc-emo .row .val { color: #8a92a6; font-variant-numeric: tabular-nums; }
+  .cc-bar { height: 8px; background: #1c2130; border-radius: 999px; overflow: hidden; }
+  .cc-bar > span { display: block; height: 100%; width: 0%; border-radius: 999px; transition: width 0.35s ease; }
+  .b-happy   > span { background: linear-gradient(90deg,#34d399,#10b981); }
+  .b-neutral > span { background: linear-gradient(90deg,#94a3b8,#64748b); }
+  .b-surprise> span { background: linear-gradient(90deg,#fbbf24,#f59e0b); }
+  .b-sad     > span { background: linear-gradient(90deg,#60a5fa,#3b82f6); }
+  .b-angry   > span { background: linear-gradient(90deg,#f87171,#ef4444); }
+  .b-fear    > span { background: linear-gradient(90deg,#a78bfa,#8b5cf6); }
+  .cc-hint { color: #5a6178; font-size: 0.72rem; margin-top: 0.6rem; }
+  .cc-obj {
+    margin-top: 0.8rem; border-top: 1px solid #232838; padding-top: 0.7rem;
+  }
+  .cc-obj-btn {
+    cursor: pointer; font-size: 0.78rem; font-weight: 600;
+    color: #ffb066; background: #221a0f; border: 1px solid #4a3a1f;
+    border-radius: 8px; padding: 0.35rem 0.7rem;
+  }
+  .cc-obj-btn.on { color: #0b0f17; background: #ffb066; border-color: #ffb066; }
+  .cc-track-speed { margin-top: 0.6rem; display: none; flex-direction: column; gap: 0.4rem; }
+  .cc-track-speed.show { display: flex; }
+  .cc-track-row {
+    display: grid; grid-template-columns: 4.4rem 1fr 2.6rem; align-items: center;
+    gap: 0.5rem; font-size: 0.72rem; color: #9aa2b6;
+  }
+  .cc-track-row input[type="range"] { width: 100%; accent-color: #ffb066; }
+  .cc-track-val { text-align: right; color: #ffd2a6; font-variant-numeric: tabular-nums; }
+
+  .twin-toolbar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
+  .twin-status { font-size: 0.78rem; color: #6f7891; font-variant-numeric: tabular-nums; }
+  .twin-status.live { color: #6fdc8c; }
+  .twin-status.err { color: #ff8e8e; }
+  .twin-stage { position: relative; width: 100%; height: clamp(500px, 62vh, 760px); background: #0e1116;
+    border: 1px solid #2a3142; border-radius: 12px; overflow: hidden; }
+  .twin-stage canvas { display: block; }
+  .twin-note { margin-top: 0.6rem; font-size: 0.72rem; color: #6f7891; }
+  .twin-note b { color: #ffb347; }
+  .twin-modes { display: inline-flex; gap: 0.3rem; }
+  .twin-modes .btn-t.active { background: #1c2740; border-color: #3a5a86; color: #9fd0ff; }
+  .twin-cmd { margin-top: 0.9rem; }
+  .twin-cmd-hint { font-size: 0.74rem; color: #8a93a8; margin-bottom: 0.7rem; }
+  .twin-cmd-hint b { color: #ffb347; }
+  .twin-cmd-sliders { display: grid; gap: 0.5rem; }
+  .twin-jrow { display: grid; grid-template-columns: 76px 1fr 60px; align-items: center; gap: 0.6rem; font-size: 0.78rem; color: #aeb6c8; }
+  .twin-jrow input[type="range"] { width: 100%; accent-color: #ffb066; }
+  .twin-jrow .v { text-align: right; color: #ffd2a6; font-variant-numeric: tabular-nums; }
+  .twin-cmd-actions { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; margin-top: 0.9rem; }
+  .twin-cmd-speed { font-size: 0.78rem; color: #aeb6c8; display: flex; align-items: center; gap: 0.4rem; }
+  .twin-cmd-speed input { width: 110px; accent-color: #ffb066; }
+  .twin-arm { font-size: 0.8rem; color: #ffb347; display: flex; align-items: center; gap: 0.3rem; cursor: pointer; }
+  .twin-limits { margin-top: 0.9rem; font-size: 0.76rem; color: #8a93a8; }
+  .twin-limits summary { cursor: pointer; color: #7dd3fc; margin-bottom: 0.5rem; }
+  .twin-lrow { display: grid; grid-template-columns: 76px 1fr 1fr; gap: 0.5rem; align-items: center; margin: 0.4rem 0; }
+  .twin-lrow input { width: 100%; background: #0e1116; border: 1px solid #2a3142; color: #d9dee8; border-radius: 6px; padding: 0.25rem 0.4rem; font-variant-numeric: tabular-nums; }
+
+  /* ---- split dashboard layout: controls left, twin right ---- */
+  .layout-grid {
+    max-width: min(98vw, 1920px);
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(560px, 1fr);
+    gap: 1.2rem;
+    align-items: start;
+  }
+  .layout-grid .units {
+    max-width: none;
+    margin: 0;
+  }
+  .layout-grid .teach {
+    max-width: none;
+    margin-left: 0;
+    margin-right: 0;
+  }
+  .layout-grid .right-panel .twin-card {
+    margin-top: 0;
+    position: sticky;
+    top: 12px;
+  }
+  .layout-grid .right-panel .servo-card {
+    margin-top: 1rem;
+  }
+  @media (max-width: 1680px) {
+    .layout-grid {
+      grid-template-columns: minmax(0, 1.45fr) minmax(520px, 1fr);
+    }
+  }
+  @media (max-width: 1360px) {
+    .layout-grid {
+      grid-template-columns: 1fr;
+    }
+    .layout-grid .right-panel .twin-card {
+      position: static;
+      top: auto;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="page-header">
+    <h1>Closed-Loop Stepper Control</h1>
+    <div class="sub">4&times; NEMA 17 &middot; MKS SERVO42C</div>
+    <button class="btn-estop-all" id="estop-all" onclick="estopAll()">&#9888; STOP ALL MOTORS</button>
+    <div style="margin-top:0.6rem; display:flex; gap:0.5rem; justify-content:center; align-items:center; flex-wrap:wrap;">
+      <a href="/emotion" style="color:#7dd3fc;font-size:0.8rem;text-decoration:none;border:1px solid #2a3650;border-radius:8px;padding:0.3rem 0.7rem;display:inline-block;">&#128247; Emotion detection</a>
+      <span class="cam-chip" id="cam-chip" onclick="toggleCamera()" title="Show the head camera with live emotion detection">&#128247; Camera</span>
+      <span class="cpu-temp" id="cpu-temp" onclick="toggleHealth()" title="Click for Pi 5 health details">&#127777; Pi <span id="cpu-temp-val">--</span>&deg;C</span>
+    </div>
+  </div>
+
+  <div class="health-card hidden" id="health-card">
+    <div class="hc-title">&#128202; Raspberry Pi 5 health <span id="hc-updated" style="margin-left:auto;font-weight:400;color:#5a6178;font-size:0.72rem;"></span></div>
+    <div class="health-grid" id="health-grid">
+      <div class="hc-item">
+        <div class="hc-label">CPU usage</div>
+        <div class="hc-value" id="hc-cpu">--</div>
+        <div class="hc-bar"><span id="hc-cpu-bar"></span></div>
+        <div class="hc-sub" id="hc-cpu-sub">load --</div>
+      </div>
+      <div class="hc-item">
+        <div class="hc-label">Temperature</div>
+        <div class="hc-value" id="hc-temp">--</div>
+        <div class="hc-bar"><span id="hc-temp-bar"></span></div>
+        <div class="hc-sub" id="hc-freq">-- MHz</div>
+      </div>
+      <div class="hc-item">
+        <div class="hc-label">Memory</div>
+        <div class="hc-value" id="hc-mem">--</div>
+        <div class="hc-bar"><span id="hc-mem-bar"></span></div>
+        <div class="hc-sub" id="hc-mem-sub">-- / -- MB</div>
+      </div>
+      <div class="hc-item">
+        <div class="hc-label">Disk (/)</div>
+        <div class="hc-value" id="hc-disk">--</div>
+        <div class="hc-bar"><span id="hc-disk-bar"></span></div>
+        <div class="hc-sub" id="hc-disk-sub">-- / -- GB</div>
+      </div>
+      <div class="hc-item">
+        <div class="hc-label">Swap</div>
+        <div class="hc-value" id="hc-swap">--</div>
+        <div class="hc-bar"><span id="hc-swap-bar"></span></div>
+        <div class="hc-sub" id="hc-swap-sub">-- / -- MB</div>
+      </div>
+      <div class="hc-item">
+        <div class="hc-label">Network</div>
+        <div class="hc-value" id="hc-net">--</div>
+        <div class="hc-sub" id="hc-net-rate">&#8595; -- &#8593; -- kB/s</div>
+      </div>
+      <div class="hc-item">
+        <div class="hc-label">Fan</div>
+        <div class="hc-value" id="hc-fan">--</div>
+        <div class="hc-sub" id="hc-fan-sub">active cooler</div>
+      </div>
+      <div class="hc-item">
+        <div class="hc-label">Power draw</div>
+        <div class="hc-value" id="hc-power-w">--</div>
+        <div class="hc-bar"><span id="hc-power-bar"></span></div>
+        <div class="hc-sub" id="hc-power-sub">-- V &middot; -- A</div>
+      </div>
+      <div class="hc-item">
+        <div class="hc-label">Uptime</div>
+        <div class="hc-value" id="hc-uptime">--</div>
+        <div class="hc-sub" id="hc-volt">-- V core</div>
+      </div>
+      <div class="hc-power" id="hc-power">
+        <span class="hc-dot"></span>
+        <span id="hc-power-text">Power &amp; throttling: --</span>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn-estop-all estop-float" onclick="estopAll()" title="Emergency stop all motors">&#9888; STOP ALL</button>
+
+  <div class="cam-card hidden" id="camera-card">
+    <div class="cc-title"><span class="cc-dot"></span> Head camera &middot; emotion detection
+      <a href="/emotion" style="margin-left:auto;color:#7dd3fc;font-size:0.75rem;text-decoration:none;">full view &rarr;</a>
+    </div>
+    <div class="cc-stage">
+      <div class="cc-view" id="cc-view">
+        <div class="cc-placeholder" id="cc-placeholder">Starting camera&hellip;</div>
+        <img id="cc-img" alt="camera stream" style="display:none;" />
+        <div class="cc-tag" id="cc-tag">U20CAM &middot; 640&times;480</div>
+        <div class="cc-fps" id="cc-fps">&mdash; fps</div>
+      </div>
+      <div class="cc-side">
+        <div class="cc-verdict">
+          <div class="emoji" id="cc-emoji">&#129488;</div>
+          <div>
+            <div class="label" id="cc-label">&mdash;</div>
+            <div class="conf" id="cc-conf">no face yet</div>
+          </div>
+        </div>
+        <div id="cc-bars"></div>
+        <div class="cc-hint" id="cc-hint">On-device YuNet face detection + FER+ emotion model.</div>
+        <div class="cc-obj" style="margin-top:0.5rem;">
+          <button class="cc-obj-btn on" id="cc-emo-toggle" onclick="toggleEmotion()">&#128513; Emotion: ON</button>
+        </div>
+        <div class="cc-obj">
+          <button class="cc-obj-btn" id="cc-face-track-toggle" onclick="toggleFaceTracking()">&#128100; Face tracking: OFF</button>
+          <div class="cc-hint" id="cc-face-track-hint">Head tracking uses Motors 1-4 + Axis 5 tilt.</div>
+          <div class="cc-track-speed" id="cc-track-speed">
+            <label class="cc-track-row">
+              <span>Pan speed</span>
+              <input type="range" id="cc-track-pan-speed" min="0.25" max="2.5" step="0.05" value="1">
+              <span class="cc-track-val" id="cc-track-pan-val">1.0&times;</span>
+            </label>
+            <label class="cc-track-row">
+              <span>Tilt speed</span>
+              <input type="range" id="cc-track-tilt-speed" min="0.25" max="2.5" step="0.05" value="1">
+              <span class="cc-track-val" id="cc-track-tilt-val">1.0&times;</span>
+            </label>
+          </div>
+        </div>
+        <div class="cc-obj">
+          <button class="cc-obj-btn" id="cc-rings-test" onclick="testRings()">&#128161; Test LED rings</button>
+          <button class="cc-obj-btn on" id="cc-rings-toggle" onclick="toggleRings()">&#128161; LED rings: ON</button>
+          <button class="cc-obj-btn" id="cc-act-led-toggle" onclick="toggleActLed()">&#128309; Pi ACT LED: OFF</button>
+          <div class="cc-hint" id="cc-rings-hint">WS2812 rings on SPI (GPIO10). Runs an R/G/B sweep.</div>
+          <div class="cc-hint" id="cc-led-hint">ACT LED uses onboard status LED control.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="layout-grid">
+    <div class="left-panel">
+      <div class="units" id="units"></div>
+
+      <div class="teach">
+        <div class="card-title">Teach &amp; Playback</div>
+
+    <div class="teach-toolbar">
+      <button class="btn-t warn" id="t-freedrive">Free-drive: OFF</button>
+      <button class="btn-t" id="t-record">&#9679; Record Waypoint</button>
+      <button class="btn-t primary" id="t-play">&#9654; Play</button>
+      <button class="btn-t danger" id="t-stop">&#9632; Stop</button>
+      <button class="btn-t" id="t-clear">Clear All</button>
+    </div>
+
+    <div class="teach-settings">
+      <label>Speed
+        <input type="range" id="t-speed" min="10" max="100" value="60">
+        <span id="t-speed-val">60%</span>
+      </label>
+      <label>Loops <input type="number" id="t-loops" min="0" value="1"> <small>(0 = &#8734;)</small></label>
+      <label>Dwell <input type="number" id="t-dwell" min="0" step="0.1" value="0.5"> s</label>
+    </div>
+
+    <div class="teach-prog">
+      <input type="text" id="t-name" placeholder="program name" maxlength="40">
+      <button class="btn-t" id="t-save">Save</button>
+      <select id="t-progs"><option value="">— saved programs —</option></select>
+      <button class="btn-t" id="t-load">Load</button>
+      <button class="btn-t danger" id="t-delete">Delete</button>
+    </div>
+
+    <div class="teach-status" id="t-status"><span class="dot"></span><span id="t-status-text">idle</span></div>
+
+    <table class="wp-table">
+      <thead>
+        <tr>
+          <th>#</th><th>J1 (&deg;)</th><th>J2 (&deg;)</th><th>J3 (&deg;)</th><th>J4 (&deg;)</th>
+          <th>Dwell s</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="t-rows"></tbody>
+    </table>
+        <div class="wp-empty" id="t-empty">No waypoints recorded yet. Use free-drive or the motor controls to position the arm, then Record.</div>
+      </div>
+    </div>
+
+    <div class="right-panel">
+      <div class="teach twin-card">
+        <div class="card-title">3D Digital Twin</div>
+        <div class="twin-toolbar">
+          <button class="btn-t primary" id="twin-toggle">Show twin</button>
+          <button class="btn-t" id="twin-zero" disabled>Set home (zero)</button>
+          <span class="twin-modes" id="twin-modes" style="display:none;">
+            <button class="btn-t active" id="twin-mode-mirror">Mirror</button>
+            <button class="btn-t" id="twin-mode-command">Command</button>
+          </span>
+          <span class="twin-status" id="twin-status">off</span>
+        </div>
+        <div class="twin-stage" id="twin-stage" style="display:none;">
+          <div id="twin-canvas"></div>
+        </div>
+        <div class="twin-cmd" id="twin-cmd" style="display:none;">
+          <div class="twin-cmd-hint">Drag the joints to pose the model, then press <b>Move robot</b>.
+            Set <b>home</b> first with the real arm at its zero pose.</div>
+          <div class="twin-cmd-sliders" id="twin-cmd-sliders"></div>
+          <div class="twin-cmd-actions">
+            <label class="twin-cmd-speed">Speed
+              <input type="range" id="twin-speed" min="0.1" max="1" step="0.05" value="0.4">
+              <span id="twin-speed-val">0.40&times;</span>
+            </label>
+            <label class="twin-arm" title="Safety: enable to allow sending the move"><input type="checkbox" id="twin-arm"> Arm</label>
+            <button class="btn-t primary" id="twin-send" disabled>&#9654; Move robot to pose</button>
+            <button class="btn-t danger" id="twin-stop-move">&#9632; STOP</button>
+            <span class="twin-status" id="twin-move-status">idle</span>
+          </div>
+          <details class="twin-limits">
+            <summary>Joint limits (degrees)</summary>
+            <div id="twin-limits-rows"></div>
+            <button class="btn-t" id="twin-limits-apply">Apply limits</button>
+          </details>
+        </div>
+        <div class="twin-note">Live mirror of the arm from encoders (joints 1–4, with Motor 2 on joint 3 and Motor 1 on joint 4) and Axis 5 tilt on joint 5.
+          Switch to <b>Command</b> to pose the model and drive the real arm (steppers + tilt).
+          Press <b>Set home</b> with the arm at its zero pose to align the model.</div>
+      </div>
+
+      <div class="teach servo-card">
+        <div class="card-title">Servo Motors &middot; Axis 5 &amp; 6</div>
+        <div id="servo-controls" style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="footer">AndPI5 &middot; 192.168.0.101:5000</p>
+
+  <script>
+    // Motor definitions: id, friendly name, wiring note, and gear reduction.
+    const MOTORS = [
+      { id: 1, name: 'Joint 4 · Motor 1', gear: 5, wiring: 'EN GPIO17 · STP GPIO27 · DIR GPIO22 · addr 0xE0 · 5:1 planetary' },
+      { id: 2, name: 'Joint 3 · Motor 2', gear: 5, limits: true, limitTitle: 'Hall limits: CW GPIO5, CCW GPIO6 (active-low)', wiring: 'EN GPIO2 · STP GPIO3 · DIR GPIO4 · addr 0xE1 · 5:1 planetary · hall limits CW GPIO5 / CCW GPIO6' },
+      { id: 3, name: 'Joint 2 · Motor 3 (Pan)', gear: 1, limits: true, limitTitle: 'Shared travel limit (GPIO26)', wiring: 'EN GPIO23 · STP GPIO24 · DIR GPIO25 · addr 0xE2 · direct drive · end-stop GPIO26 (shared)' },
+      { id: 4, name: 'Joint 1 · Motor 4', gear: 1, limits: true, limitTitle: 'Shared travel limit (GPIO19)', wiring: 'EN GPIO16 · STP GPIO20 · DIR GPIO21 · addr 0xE3 · direct drive · end-stop GPIO19 (shared)' },
+    ];
+
+    const SERVOS = [
+      { id: 5, name: 'Axis 5', pin: 12 },
+      { id: 6, name: 'Axis 6', pin: 13 },
+    ];
+    const SERVO_MIN = -135;
+    const SERVO_MAX = 135;
+    const AXIS5_SERVO_ID = 5;
+    const AXIS5_LIMITS_KEY = 'axis5_limits_v1';
+    const AXIS5_DEFAULT_MIN = SERVO_MIN;
+    const AXIS5_DEFAULT_MAX = SERVO_MAX;
+    let axis5MinAngle = AXIS5_DEFAULT_MIN;
+    let axis5MaxAngle = AXIS5_DEFAULT_MAX;
+    const GRIPPER_SERVO_ID = 6;
+    const GRIPPER_LIMITS_KEY = 'gripper_limits_v1';
+    const GRIPPER_DEFAULT_OPEN_ANGLE = 25;
+    const GRIPPER_DEFAULT_CLOSED_ANGLE = 100;
+    let gripperOpenAngle = GRIPPER_DEFAULT_OPEN_ANGLE;
+    let gripperClosedAngle = GRIPPER_DEFAULT_CLOSED_ANGLE;
+    const servoSendState = {};
+    const servoUiState = {};
+
+    function isGripperServo(sid) {
+      return sid === GRIPPER_SERVO_ID;
+    }
+
+    function isAxis5Servo(sid) {
+      return sid === AXIS5_SERVO_ID;
+    }
+
+    function normalizeAxis5Limits(minA, maxA) {
+      let mn = Math.max(SERVO_MIN, Math.min(SERVO_MAX, minA));
+      let mx = Math.max(SERVO_MIN, Math.min(SERVO_MAX, maxA));
+      if (mn > mx) {
+        const t = mn;
+        mn = mx;
+        mx = t;
+      }
+      if (mn === mx) {
+        mx = Math.min(SERVO_MAX, mn + 1);
+        if (mn === mx) mn = Math.max(SERVO_MIN, mx - 1);
+      }
+      return { min: mn, max: mx };
+    }
+
+    function loadAxis5Limits() {
+      try {
+        const raw = localStorage.getItem(AXIS5_LIMITS_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (!Number.isFinite(parsed.min) || !Number.isFinite(parsed.max)) return;
+        const norm = normalizeAxis5Limits(parsed.min, parsed.max);
+        axis5MinAngle = norm.min;
+        axis5MaxAngle = norm.max;
+      } catch (e) { /* ignore invalid saved data */ }
+    }
+
+    function saveAxis5Limits() {
+      try {
+        localStorage.setItem(AXIS5_LIMITS_KEY, JSON.stringify({
+          min: axis5MinAngle,
+          max: axis5MaxAngle,
+        }));
+      } catch (e) { /* storage unavailable */ }
+    }
+
+    // Push the Axis 5 Hard Limit to the face tracker so it never drives the
+    // tilt servo past these angles into its mechanical end-stops.
+    function pushAxis5LimitsToTracker() {
+      try {
+        fetch('/face_tracking/tilt_limits', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ min: axis5MinAngle, max: axis5MaxAngle }),
+        }).catch(function () {});
+      } catch (e) { /* offline */ }
+    }
+
+    function refreshAxis5LimitInputs() {
+      const minInput = document.getElementById('servo-5-min');
+      const maxInput = document.getElementById('servo-5-max');
+      if (minInput) minInput.value = axis5MinAngle.toFixed(0);
+      if (maxInput) maxInput.value = axis5MaxAngle.toFixed(0);
+      const slider = document.getElementById('servo-5');
+      if (slider) {
+        slider.min = axis5MinAngle;
+        slider.max = axis5MaxAngle;
+      }
+    }
+
+    function applyAxis5Limits() {
+      const minInput = document.getElementById('servo-5-min');
+      const maxInput = document.getElementById('servo-5-max');
+      const minVal = parseFloat(minInput?.value);
+      const maxVal = parseFloat(maxInput?.value);
+      if (!Number.isFinite(minVal) || !Number.isFinite(maxVal)) return;
+      const norm = normalizeAxis5Limits(minVal, maxVal);
+      axis5MinAngle = norm.min;
+      axis5MaxAngle = norm.max;
+      saveAxis5Limits();
+      refreshAxis5LimitInputs();
+      pushAxis5LimitsToTracker();
+      const st = servoUiState[AXIS5_SERVO_ID] || {};
+      const current = Number.isFinite(st.angle) ? st.angle : axis5MinAngle;
+      const clamped = Math.max(axis5MinAngle, Math.min(axis5MaxAngle, current));
+      if (clamped !== current) setServoAngle(AXIS5_SERVO_ID, clamped);
+    }
+
+    function clampGripperAngle(v) {
+      return Math.max(SERVO_MIN, Math.min(SERVO_MAX, v));
+    }
+
+    function normalizeGripperLimits(open, closed) {
+      let o = clampGripperAngle(open);
+      let c = clampGripperAngle(closed);
+      if (o > c) {
+        const t = o;
+        o = c;
+        c = t;
+      }
+      if (o === c) {
+        c = clampGripperAngle(c + 1);
+        if (o === c) o = clampGripperAngle(o - 1);
+      }
+      return { open: o, closed: c };
+    }
+
+    function loadGripperLimits() {
+      try {
+        const raw = localStorage.getItem(GRIPPER_LIMITS_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (!Number.isFinite(parsed.open) || !Number.isFinite(parsed.closed)) return;
+        const norm = normalizeGripperLimits(parsed.open, parsed.closed);
+        gripperOpenAngle = norm.open;
+        gripperClosedAngle = norm.closed;
+      } catch (e) { /* ignore invalid saved data */ }
+    }
+
+    function saveGripperLimits() {
+      try {
+        localStorage.setItem(GRIPPER_LIMITS_KEY, JSON.stringify({
+          open: gripperOpenAngle,
+          closed: gripperClosedAngle,
+        }));
+      } catch (e) { /* storage unavailable */ }
+    }
+
+    function refreshGripperLimitInputs() {
+      const openInput = document.getElementById(`servo-${GRIPPER_SERVO_ID}-open`);
+      const closedInput = document.getElementById(`servo-${GRIPPER_SERVO_ID}-closed`);
+      if (openInput) openInput.value = gripperOpenAngle.toFixed(0);
+      if (closedInput) closedInput.value = gripperClosedAngle.toFixed(0);
+    }
+
+    function applyGripperLimits() {
+      const sid = GRIPPER_SERVO_ID;
+      const openInput = document.getElementById(`servo-${sid}-open`);
+      const closedInput = document.getElementById(`servo-${sid}-closed`);
+      const openVal = parseFloat(openInput?.value);
+      const closedVal = parseFloat(closedInput?.value);
+      if (!Number.isFinite(openVal) || !Number.isFinite(closedVal)) return;
+      const norm = normalizeGripperLimits(openVal, closedVal);
+      gripperOpenAngle = norm.open;
+      gripperClosedAngle = norm.closed;
+      saveGripperLimits();
+      refreshGripperLimitInputs();
+      const st = servoUiState[sid] || {};
+      const current = Number.isFinite(st.angle) ? st.angle : gripperOpenAngle;
+      updateGripperButton(sid, current, st.enabled !== false);
+      const val = document.getElementById(`servo-${sid}-val`);
+      if (val) {
+        val.textContent = `${isGripperClosed(current) ? 'CLOSE' : 'OPEN'} · ${current.toFixed(0)}°`;
+      }
+    }
+
+    function gripperMidpoint() {
+      return (gripperOpenAngle + gripperClosedAngle) / 2;
+    }
+
+    function isGripperClosed(angle) {
+      return Number.isFinite(angle) && angle >= gripperMidpoint();
+    }
+
+    function updateGripperButton(sid, angle, enabled) {
+      if (!isGripperServo(sid)) return;
+      const btn = document.getElementById(`servo-${sid}-gripper`);
+      if (!btn) return;
+      const closed = isGripperClosed(angle);
+      btn.textContent = closed ? 'Gripper: CLOSE (tap to OPEN)' : 'Gripper: OPEN (tap to CLOSE)';
+      btn.classList.toggle('on', enabled && !closed);
+      btn.disabled = !enabled;
+    }
+
+    function servoHTML(s) {
+      const i = s.id;
+      if (isGripperServo(i)) {
+        return `
+      <div class="servo-unit">
+        <div class="card-title">${s.name} · Gripper <small>GPIO${s.pin}</small></div>
+        <div class="servo-slider">
+          <label>State</label>
+          <span class="servo-angle" id="servo-${i}-val">OPEN · ${gripperOpenAngle}°</span>
+        </div>
+        <div class="servo-actions">
+          <button id="servo-${i}-gripper" class="servo-btn on" onclick="toggleGripper(${i})">Gripper: OPEN (tap to CLOSE)</button>
+          <button id="servo-${i}-power" class="servo-btn on" onclick="toggleServoPower(${i})">Power: ON</button>
+          <button id="servo-${i}-hold" class="servo-btn on" onclick="toggleServoHold(${i})">Hold: ON</button>
+        </div>
+        <div class="servo-slider" style="margin-top:0.55rem;">
+          <label>Limits</label>
+          <input id="servo-${i}-open" class="num-input" type="number" min="${SERVO_MIN}" max="${SERVO_MAX}" step="1"
+                 value="${gripperOpenAngle}" onchange="applyGripperLimits()" title="Open angle">
+          <span class="servo-angle" style="min-width:2.1rem;text-align:center;">to</span>
+          <input id="servo-${i}-closed" class="num-input" type="number" min="${SERVO_MIN}" max="${SERVO_MAX}" step="1"
+                 value="${gripperClosedAngle}" onchange="applyGripperLimits()" title="Closed angle">
+        </div>
+        <div class="servo-slider" style="margin-top:0.55rem;">
+          <label for="servo-${i}-delay">Detach</label>
+          <input type="range" id="servo-${i}-delay" min="0.05" max="2.0" step="0.05" value="0.25"
+                 oninput="onServoDelayInput(${i}, this.value)" onchange="commitServoDelay(${i}, this.value)">
+          <span class="servo-angle" id="servo-${i}-delay-val">0.25s</span>
+        </div>
+      </div>
+      `;
+      }
+      return `
+      <div class="servo-unit">
+        <div class="card-title">${s.name} <small>GPIO${s.pin}</small></div>
+        <div class="servo-slider">
+          <label for="servo-${i}">Angle</label>
+          <input type="range" id="servo-${i}" min="${isAxis5Servo(i) ? axis5MinAngle : SERVO_MIN}" max="${isAxis5Servo(i) ? axis5MaxAngle : SERVO_MAX}" value="0" step="1"
+                 oninput="setServoAngle(${i}, this.value)">
+          <span class="servo-angle" id="servo-${i}-val">0°</span>
+        </div>
+        ${isAxis5Servo(i) ? `
+        <div class="servo-slider" style="margin-top:0.55rem;">
+          <label>Hard Limit</label>
+          <input id="servo-${i}-min" class="num-input" type="number" min="${SERVO_MIN}" max="${SERVO_MAX}" step="1"
+                 value="${axis5MinAngle}" onchange="applyAxis5Limits()" title="Minimum angle">
+          <span class="servo-angle" style="min-width:2.1rem;text-align:center;">to</span>
+          <input id="servo-${i}-max" class="num-input" type="number" min="${SERVO_MIN}" max="${SERVO_MAX}" step="1"
+                 value="${axis5MaxAngle}" onchange="applyAxis5Limits()" title="Maximum angle">
+        </div>
+        ` : ''}
+        <div class="servo-actions">
+          <button id="servo-${i}-power" class="servo-btn on" onclick="toggleServoPower(${i})">Power: ON</button>
+          <button id="servo-${i}-hold" class="servo-btn on" onclick="toggleServoHold(${i})">Hold: ON</button>
+        </div>
+        <div class="servo-slider" style="margin-top:0.55rem;">
+          <label for="servo-${i}-delay">Detach</label>
+          <input type="range" id="servo-${i}-delay" min="0.05" max="2.0" step="0.05" value="0.25"
+                 oninput="onServoDelayInput(${i}, this.value)" onchange="commitServoDelay(${i}, this.value)">
+          <span class="servo-angle" id="servo-${i}-delay-val">0.25s</span>
+        </div>
+      </div>
+      `;
+    }
+
+    function applyServoUiState(sid, st) {
+      const powerBtn = document.getElementById(`servo-${sid}-power`);
+      const holdBtn = document.getElementById(`servo-${sid}-hold`);
+      const slider = document.getElementById(`servo-${sid}`);
+      const delaySlider = document.getElementById(`servo-${sid}-delay`);
+      const angle = Number.isFinite(st.angle) ? st.angle : 0;
+      const enabled = !!st.enabled;
+      const hold = !!st.hold;
+      if (powerBtn) {
+        powerBtn.classList.toggle('on', enabled);
+        powerBtn.textContent = `Power: ${enabled ? 'ON' : 'OFF'}`;
+      }
+      if (holdBtn) {
+        holdBtn.classList.toggle('on', hold);
+        holdBtn.textContent = `Hold: ${hold ? 'ON' : 'OFF'}`;
+      }
+      if (slider) slider.disabled = !enabled;
+      if (delaySlider) delaySlider.disabled = !enabled;
+      const val = document.getElementById(`servo-${sid}-val`);
+      if (val && Number.isFinite(angle)) {
+        if (isGripperServo(sid)) {
+          val.textContent = `${isGripperClosed(angle) ? 'CLOSE' : 'OPEN'} · ${angle.toFixed(0)}°`;
+        } else {
+          val.textContent = angle.toFixed(0) + '°';
+        }
+      }
+      updateGripperButton(sid, angle, enabled);
+      servoUiState[sid] = {
+        enabled,
+        hold,
+        angle,
+        detach_delay: Number.isFinite(st.detach_delay) ? st.detach_delay : 0.25,
+      };
+    }
+
+    function onServoDelayInput(sid, seconds) {
+      const v = Math.max(0.05, Math.min(2.0, parseFloat(seconds)));
+      const label = document.getElementById(`servo-${sid}-delay-val`);
+      if (label) label.textContent = v.toFixed(2) + 's';
+    }
+
+    async function commitServoDelay(sid, seconds) {
+      const v = Math.max(0.05, Math.min(2.0, parseFloat(seconds)));
+      onServoDelayInput(sid, v);
+      try {
+        const r = await fetch(`/servo/${sid}/detach_delay`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seconds: v }),
+        });
+        if (!r.ok) return;
+        const d = await r.json();
+        applyServoUiState(sid, d);
+      } catch (e) { /* offline */ }
+    }
+
+    function queueServoSend(sid) {
+      const st = servoSendState[sid];
+      if (!st || st.inflight) return;
+      st.inflight = true;
+      const angle = st.pending;
+      fetch(`/servo/${sid}/angle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ angle }),
+      }).catch(() => {}).finally(() => {
+        st.inflight = false;
+        // If slider moved while this request was in-flight, send the latest now.
+        if (st.pending !== angle) queueServoSend(sid);
+      });
+    }
+
+    function setServoAngle(sid, angle) {
+      angle = Math.max(SERVO_MIN, Math.min(SERVO_MAX, parseFloat(angle)));
+      if (isAxis5Servo(sid)) {
+        angle = Math.max(axis5MinAngle, Math.min(axis5MaxAngle, angle));
+      }
+      const val = document.getElementById(`servo-${sid}-val`);
+      if (val) {
+        if (isGripperServo(sid)) {
+          val.textContent = `${isGripperClosed(angle) ? 'CLOSE' : 'OPEN'} · ${angle.toFixed(0)}°`;
+        } else {
+          val.textContent = angle.toFixed(0) + '°';
+        }
+      }
+      if (servoUiState[sid] && !servoUiState[sid].enabled) return;
+      if (!servoSendState[sid]) servoSendState[sid] = { inflight: false, pending: angle };
+      servoSendState[sid].pending = angle;
+      if (servoUiState[sid]) servoUiState[sid].angle = angle;
+      updateGripperButton(sid, angle, true);
+      queueServoSend(sid);
+    }
+
+    function toggleGripper(sid) {
+      const st = servoUiState[sid] || {};
+      if (!st.enabled) return;
+      const current = Number.isFinite(st.angle)
+        ? st.angle
+        : (Number.isFinite(servoSendState[sid]?.pending) ? servoSendState[sid].pending : gripperOpenAngle);
+      const next = isGripperClosed(current) ? gripperOpenAngle : gripperClosedAngle;
+      setServoAngle(sid, next);
+    }
+
+    async function toggleServoPower(sid) {
+      const st = servoUiState[sid] || { enabled: true, hold: true };
+      const on = !st.enabled;
+      try {
+        const r = await fetch(`/servo/${sid}/power`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ on }),
+        });
+        if (!r.ok) return;
+        const d = await r.json();
+        applyServoUiState(sid, d);
+        if (Number.isFinite(d.detach_delay)) onServoDelayInput(sid, d.detach_delay);
+      } catch (e) { /* offline */ }
+    }
+
+    async function toggleServoHold(sid) {
+      const st = servoUiState[sid] || { enabled: true, hold: true };
+      const on = !st.hold;
+      try {
+        const r = await fetch(`/servo/${sid}/hold`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ on }),
+        });
+        if (!r.ok) return;
+        const d = await r.json();
+        applyServoUiState(sid, d);
+        if (Number.isFinite(d.detach_delay)) onServoDelayInput(sid, d.detach_delay);
+      } catch (e) { /* offline */ }
+    }
+
+    async function initServos() {
+      const container = document.getElementById('servo-controls');
+      if (!container) return;
+      loadAxis5Limits();
+      loadGripperLimits();
+      container.innerHTML = SERVOS.map(servoHTML).join('');
+      refreshAxis5LimitInputs();
+      refreshGripperLimitInputs();
+      pushAxis5LimitsToTracker();
+      SERVOS.forEach(s => {
+        try {
+          fetch(`/servo/${s.id}/angle`).then(r => r.json()).then(d => {
+            const input = document.getElementById(`servo-${s.id}`);
+            const val = document.getElementById(`servo-${s.id}-val`);
+            if (input && Number.isFinite(d.angle)) {
+              input.value = d.angle;
+            }
+            if (val && Number.isFinite(d.angle)) {
+              if (isGripperServo(s.id)) {
+                val.textContent = `${isGripperClosed(d.angle) ? 'CLOSE' : 'OPEN'} · ${d.angle.toFixed(0)}°`;
+              } else {
+                val.textContent = d.angle.toFixed(0) + '°';
+              }
+            }
+            if (Number.isFinite(d.detach_delay)) {
+              const ds = document.getElementById(`servo-${s.id}-delay`);
+              if (ds) ds.value = d.detach_delay;
+              onServoDelayInput(s.id, d.detach_delay);
+            }
+            applyServoUiState(s.id, {
+              angle: Number.isFinite(d.angle) ? d.angle : 0,
+              enabled: d.enabled !== false,
+              hold: d.hold !== false,
+              detach_delay: Number.isFinite(d.detach_delay) ? d.detach_delay : 0.25,
+            });
+          }).catch(() => {});
+        } catch (e) { /* offline */ }
+      });
+    }
+
+    function unitHTML(m) {
+      const i = m.id;
+      return `
+      <div class="motor-unit">
+        <div class="unit-title">${m.name} <small>${m.wiring}</small></div>
+        <div class="unit-body">
+          <div class="panel">
+            <div class="card-title">Motor Control · NEMA 17</div>
+            <p class="motor-status">State: <span id="motor-state-${i}">Loading...</span></p>
+            <p class="motor-status" style="margin-top:-0.75rem;">
+              Live: <span id="live-rpm-${i}" style="color:#a0cfff;">0</span> RPM
+              (<span id="live-sps-${i}">0</span> sps)
+            </p>
+
+            <div class="control-row">
+              <label>Jog (hold)</label>
+              <div class="jog-toggle">
+                <button id="jog-ccw-${i}" class="btn-jog"
+                        onpointerdown="jogStart(event, ${i}, 'ccw')"
+                        onpointerup="jogStop(event, ${i})"
+                        onpointerleave="jogStop(event, ${i})"
+                        onpointercancel="jogStop(event, ${i})"
+                        oncontextmenu="return false">&#8634; CCW</button>
+                <button id="jog-cw-${i}" class="btn-jog"
+                        onpointerdown="jogStart(event, ${i}, 'cw')"
+                        onpointerup="jogStop(event, ${i})"
+                        onpointerleave="jogStop(event, ${i})"
+                        onpointercancel="jogStop(event, ${i})"
+                        oncontextmenu="return false">CW &#8635;</button>
+              </div>
+            </div>
+${m.limits ? `
+            <div class="limit-row">
+              <label>End stop</label>
+              <span class="limit-pill" id="limit-${i}" title="${m.limitTitle || 'Travel limit input'}"><span class="ld"></span><span id="limit-text-${i}">open</span></span>
+            </div>` : ''}
+
+            <div class="control-row">
+              <label>Speed</label>
+              <span class="speed-value">
+                <span id="speed-label-${i}">400</span> sps
+                &middot; <span id="rpm-label-${i}">--</span> RPM
+              </span>
+            </div>
+            <input type="range" id="speed-slider-${i}" min="1" max="6000" value="400"
+                   oninput="onSpeedInput(${i}, this.value)" onchange="commitSpeed(${i}, this.value)" />
+
+            <div class="control-row" style="margin-top:1.25rem;">
+              <label>Acceleration</label>
+              <span class="speed-value"><span id="accel-label-${i}">4000</span> sps&sup2;</span>
+            </div>
+            <input type="range" id="accel-slider-${i}" min="100" max="50000" step="100" value="4000"
+                   oninput="onAccelInput(${i}, this.value)" onchange="commitAccel(${i}, this.value)" />
+
+            <div class="control-row" style="margin-top:1.25rem;">
+              <label>Target RPM</label>
+              <div style="display:flex; gap:0.5rem;">
+                <input type="number" id="rpm-input-${i}" class="num-input" min="0" step="0.1" value="0" />
+                <button class="dir-toggle" style="background:#4a78ff;color:#fff;padding:0.5rem 1rem;"
+                        onclick="setRpm(${i})">Set</button>
+              </div>
+            </div>
+
+            <div class="geometry">
+              <div class="control-row">
+                <label>Full steps / rev</label>
+                <input type="number" id="fsteps-input-${i}" class="num-input" min="1" value="200"
+                       onchange="setGeometry(${i})" />
+              </div>
+              <div class="control-row" style="margin-bottom:0;">
+                <label>Microstepping</label>
+                <select id="micro-input-${i}" class="num-input" onchange="setGeometry(${i})">
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="4">4</option>
+                  <option value="8">8</option>
+                  <option value="16" selected>16</option>
+                  <option value="32">32</option>
+                  <option value="64">64</option>
+                  <option value="128">128</option>
+                  <option value="256">256</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="buttons" style="display:flex; gap:1rem; justify-content:center; margin-top:1.1rem;">
+              <button class="btn-motor-off" onclick="softStop(${i})">Disable</button>
+              <button class="btn-motor-on"  onclick="setMotor(${i}, 'enable')">Enable</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="control-row" style="margin-bottom:1rem;">
+              <div class="card-title" style="margin-bottom:0;">
+                Encoder${m.gear !== 1 ? ' · output shaft' : ''} · SERVO42C (UART)
+                ${m.gear !== 1 ? `<span style="color:#5a6178;font-size:0.72rem;">${m.gear}:1</span>` : ''}
+              </div>
+              <span class="live-badge" id="enc-live-${i}">&#9679; LIVE</span>
+            </div>
+            <div class="encoder-layout">
+              <div class="encoder-readout">
+                <div class="rev-counter">
+                  <div class="rev-counter-head">
+                    <span class="rev-counter-k">Turns since reset</span>
+                    <button class="rev-reset-btn" onclick="resetTurns(${i})">Reset</button>
+                  </div>
+                  <div class="rev-counter-v"><span id="enc-turns-${i}">--</span></div>
+                </div>
+                <div class="enc-dial">
+                  <div class="enc-needle" id="enc-needle-${i}"></div>
+                  <div class="enc-hub"></div>
+                </div>
+                <div class="encoder-grid">
+                  <div class="enc-cell">
+                    <div class="enc-k">Shaft angle</div>
+                    <div class="enc-v"><span id="enc-angle-${i}">--</span>&deg;</div>
+                  </div>
+                  <div class="enc-cell">
+                    <div class="enc-k">Revolutions</div>
+                    <div class="enc-v" id="enc-revs-${i}">--</div>
+                  </div>
+                  <div class="enc-cell">
+                    <div class="enc-k">Total angle</div>
+                    <div class="enc-v"><span id="enc-total-${i}">--</span>&deg;</div>
+                  </div>
+                  <div class="enc-cell">
+                    <div class="enc-k">Raw value</div>
+                    <div class="enc-v" id="enc-raw-${i}">--</div>
+                  </div>
+                </div>
+                <p class="enc-error" id="enc-error-${i}"></p>
+              </div>
+              <div class="encoder-plot">
+                <div class="enc-chart-wrap">
+                  <div class="enc-chart-head">
+                    <span id="enc-chart-label-${i}">Shaft angle (&deg;) &middot; last 30 s</span>
+                    <select id="enc-chart-metric-${i}" onchange="resetChart(${i})">
+                      <option value="angle_deg">Shaft angle</option>
+                      <option value="total_angle_deg">Total angle</option>
+                      <option value="revolutions">Revolutions</option>
+                    </select>
+                  </div>
+                  <canvas id="enc-chart-${i}" width="600" height="240"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    // ---------------- Per-motor state ----------------
+    const ENC_WINDOW_MS = 30000;
+    const ENC_METRICS = {
+      angle_deg:       { label: 'Shaft angle (°) · last 30 s',  unit: '°' },
+      total_angle_deg: { label: 'Total angle (°) · last 30 s',  unit: '°' },
+      revolutions:     { label: 'Revolutions · last 30 s',      unit: '' },
+    };
+    const units = {};   // id -> { speedTimer, accelTimer, liveTimer, encSamples, turnsZero, lastRevolutions }
+
+    function el(name, i) { return document.getElementById(`${name}-${i}`); }
+
+    // ---------------- Stepper motor ----------------
+    function applyMotor(i, s) {
+      el('speed-slider', i).value = s.speed;
+      el('speed-label', i).textContent = s.speed;
+      el('rpm-label', i).textContent = s.rpm;
+      el('fsteps-input', i).value = s.full_steps_per_rev;
+      el('micro-input', i).value = s.microstepping;
+      el('accel-slider', i).value = s.accel;
+      el('accel-label', i).textContent = s.accel;
+      updateLive(i, s);
+    }
+
+    function updateLive(i, s) {
+      const state = el('motor-state', i);
+      const lim = s.limit;
+      if (s.limit_stop) {
+        const d = lim && lim.blocked_dir ? ' (' + lim.blocked_dir.toUpperCase() + ')' : '';
+        state.textContent = 'END STOP' + d;
+        state.style.color = '#ff7676';
+      } else if (s.stopping) {
+        state.textContent = 'STOPPING';
+        state.style.color = '#ffb84a';
+      } else if (s.enabled) {
+        state.textContent = 'RUNNING';
+        state.style.color = '#00ff88';
+      } else {
+        state.textContent = 'STOPPED';
+        state.style.color = '#e03e3e';
+      }
+      el('live-rpm', i).textContent = s.current_rpm;
+      el('live-sps', i).textContent = s.current_speed;
+      if (lim) {
+        const pill = document.getElementById(`limit-${i}`);
+        const txt = document.getElementById(`limit-text-${i}`);
+        if (pill) pill.classList.toggle('pressed', !!lim.pressed);
+        if (txt) {
+          txt.textContent = lim.pressed
+            ? (lim.blocked_dir ? 'blocked ' + lim.blocked_dir.toUpperCase() : 'pressed')
+            : 'open';
+        }
+      }
+      updateLivePolling(i, s.enabled || s.stopping || (lim && lim.pressed));
+    }
+
+    function updateLivePolling(i, running) {
+      const u = units[i];
+      if (running && u.liveTimer === null) {
+        u.liveTimer = setInterval(() => pollLive(i), 400);
+      } else if (!running && u.liveTimer !== null) {
+        clearInterval(u.liveTimer);
+        u.liveTimer = null;
+      }
+    }
+
+    async function pollLive(i) {
+      const res = await fetch(`/motor/${i}/status`);
+      updateLive(i, await res.json());
+    }
+
+    async function fetchMotor(i) {
+      const res = await fetch(`/motor/${i}/status`);
+      applyMotor(i, await res.json());
+    }
+
+    async function setMotor(i, action) {
+      const res = await fetch(`/motor/${i}/${action}`, { method: 'POST' });
+      applyMotor(i, await res.json());
+    }
+
+    async function postJSON(i, path, body) {
+      const res = await fetch(`/motor/${i}/${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      applyMotor(i, await res.json());
+    }
+
+    function softStop(i) { postJSON(i, 'disable', { soft: true }); }
+    function hardStop(i) { postJSON(i, 'disable', { soft: false }); }
+
+
+    // ---- Global emergency stop: hard-stop ALL motors + any playback ----
+    async function estopAll() {
+      // Clear any active jog state so released buttons don't re-trigger.
+      MOTORS.forEach(m => {
+        const u = units[m.id];
+        if (u && u.jogging) {
+          const btn = el(`jog-${u.jogging}`, m.id);
+          if (btn) btn.classList.remove('jogging');
+          u.jogging = null;
+        }
+      });
+      const flash = document.getElementById('estop-all');
+      if (flash) { flash.classList.remove('flash'); void flash.offsetWidth; flash.classList.add('flash'); }
+      try {
+        await fetch('/estop', { method: 'POST' });
+      } catch (e) { /* ignore */ }
+      // Refresh every panel so they show STOPPED.
+      MOTORS.forEach(m => fetchMotor(m.id));
+      if (typeof setStatus === 'function') setStatus('emergency stop — all motors halted', false);
+    }
+
+    // ---- Momentary jog: hold to move, release to stop ----
+    function jogStart(e, i, dir) {
+      e.preventDefault();
+      const btn = e.currentTarget;
+      // Keep receiving pointer events even if the finger/cursor slides off the
+      // button, so we still get the matching pointerup to stop the motor.
+      if (e.pointerId !== undefined && btn.setPointerCapture) {
+        try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+      }
+      const u = units[i];
+      if (!u || u.jogging) return;
+      u.jogging = dir;
+      btn.classList.add('jogging');
+      // Move only while held: energize + emit pulses in this direction.
+      postJSON(i, 'jog', { direction: dir, on: true });
+    }
+    function jogStop(e, i) {
+      const u = units[i];
+      if (!u || !u.jogging) return;
+      const dir = u.jogging;
+      u.jogging = null;
+      const btn = el(`jog-${dir}`, i);
+      if (btn) btn.classList.remove('jogging');
+      // Stop moving but stay energized (holds position).
+      postJSON(i, 'jog', { on: false });
+    }
+
+    function setRpm(i) {
+      const rpm = parseFloat(el('rpm-input', i).value) || 0;
+      postJSON(i, 'rpm', { rpm });
+    }
+
+    function setGeometry(i) {
+      const full_steps_per_rev = parseInt(el('fsteps-input', i).value, 10) || 200;
+      const microstepping = parseInt(el('micro-input', i).value, 10) || 1;
+      postJSON(i, 'geometry', { full_steps_per_rev, microstepping });
+    }
+
+    function onSpeedInput(i, value) {
+      el('speed-label', i).textContent = value;
+      clearTimeout(units[i].speedTimer);
+      units[i].speedTimer = setTimeout(() => commitSpeed(i, value), 120);
+    }
+    function commitSpeed(i, value) {
+      clearTimeout(units[i].speedTimer);
+      postJSON(i, 'speed', { speed: parseInt(value, 10) });
+    }
+
+    function onAccelInput(i, value) {
+      el('accel-label', i).textContent = value;
+      clearTimeout(units[i].accelTimer);
+      units[i].accelTimer = setTimeout(() => commitAccel(i, value), 120);
+    }
+    function commitAccel(i, value) {
+      clearTimeout(units[i].accelTimer);
+      postJSON(i, 'accel', { accel: parseInt(value, 10) });
+    }
+
+    // ---------------- Encoder (always live) ----------------
+    function resetTurns(i) {
+      units[i].turnsZero = units[i].lastRevolutions;
+      el('enc-turns', i).textContent = '0.00';
+    }
+
+    function resetChart(i) {
+      units[i].encSamples = [];
+      const metric = el('enc-chart-metric', i).value;
+      el('enc-chart-label', i).textContent = ENC_METRICS[metric].label;
+      drawChart(i);
+    }
+
+    async function pollEncoder(i) {
+      try {
+        const res = await fetch(`/motor/${i}/encoder`);
+        applyEncoder(i, await res.json());
+      } catch (e) {
+        el('enc-error', i).textContent = 'request failed';
+      }
+    }
+
+    function applyEncoder(i, d) {
+      const u = units[i];
+      const err = el('enc-error', i);
+      const badge = el('enc-live', i);
+      if (!d.available || d.error) {
+        err.textContent = !d.available
+          ? 'UART not available: ' + (d.error || 'unknown')
+          : d.error;
+        badge.classList.add('stale');
+        badge.textContent = '○ NO SIGNAL';
+        return;
+      }
+      err.textContent = '';
+      badge.classList.remove('stale');
+      badge.textContent = '● LIVE';
+      // Display the geared OUTPUT-shaft motion (equals motor shaft when 1:1).
+      const angle = d.output_angle_deg;
+      const totalAngle = d.output_total_angle_deg;
+      const revs = d.output_revolutions;
+      u.lastRevolutions = revs;
+      if (u.turnsZero === null) u.turnsZero = revs;
+      el('enc-turns', i).textContent = (revs - u.turnsZero).toFixed(2);
+      el('enc-angle', i).textContent = angle.toFixed(1);
+      el('enc-revs', i).textContent = revs.toFixed(3);
+      el('enc-total', i).textContent = totalAngle.toFixed(1);
+      el('enc-raw', i).textContent = d.value;
+      el('enc-needle', i).style.transform =
+        `translate(-50%, -100%) rotate(${angle}deg)`;
+
+      const now = Date.now();
+      u.encSamples.push({
+        t: now,
+        angle_deg: angle,
+        total_angle_deg: totalAngle,
+        revolutions: revs,
+      });
+      while (u.encSamples.length && now - u.encSamples[0].t > ENC_WINDOW_MS) {
+        u.encSamples.shift();
+      }
+      drawChart(i);
+    }
+
+    function drawChart(i) {
+      const canvas = el('enc-chart', i);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width, H = canvas.height;
+      const padL = 46, padR = 8, padT = 10, padB = 18;
+      const metric = el('enc-chart-metric', i).value;
+      const unit = ENC_METRICS[metric].unit;
+      const samples = units[i].encSamples;
+
+      ctx.clearRect(0, 0, W, H);
+      ctx.strokeStyle = '#2a2d3e';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(padL, padT, W - padL - padR, H - padT - padB);
+
+      if (samples.length < 2) {
+        ctx.fillStyle = '#5a6178';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Collecting data…', W / 2, H / 2);
+        return;
+      }
+
+      const now = Date.now();
+      const tMin = now - ENC_WINDOW_MS, tMax = now;
+      let vMin = Infinity, vMax = -Infinity;
+      for (const s of samples) {
+        if (s[metric] < vMin) vMin = s[metric];
+        if (s[metric] > vMax) vMax = s[metric];
+      }
+      if (vMin === vMax) { vMin -= 1; vMax += 1; }
+      const pad = (vMax - vMin) * 0.1;
+      vMin -= pad; vMax += pad;
+
+      const x = t => padL + (t - tMin) / (tMax - tMin) * (W - padL - padR);
+      const y = v => padT + (1 - (v - vMin) / (vMax - vMin)) * (H - padT - padB);
+
+      ctx.fillStyle = '#9aa4bf';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      for (let k = 0; k <= 4; k++) {
+        const v = vMin + (vMax - vMin) * k / 4;
+        const yy = y(v);
+        ctx.strokeStyle = 'rgba(42,45,62,0.6)';
+        ctx.beginPath();
+        ctx.moveTo(padL, yy);
+        ctx.lineTo(W - padR, yy);
+        ctx.stroke();
+        ctx.fillText(v.toFixed(unit === '' ? 2 : 0) + unit, padL - 4, yy);
+      }
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      for (let s = 0; s <= 30; s += 10) {
+        const tt = now - s * 1000;
+        ctx.fillText('-' + s + 's', x(tt), H - padB + 4);
+      }
+
+      ctx.strokeStyle = '#4a78ff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      samples.forEach((s, k) => {
+        const px = x(s.t), py = y(s[metric]);
+        if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+
+      const last = samples[samples.length - 1];
+      ctx.fillStyle = '#a0cfff';
+      ctx.beginPath();
+      ctx.arc(x(last.t), y(last[metric]), 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // ---------------- Init ----------------
+    const container = document.getElementById('units');
+    container.innerHTML = MOTORS.map(unitHTML).join('');
+    MOTORS.forEach(m => {
+      units[m.id] = {
+        speedTimer: null, accelTimer: null, liveTimer: null,
+        encSamples: [], turnsZero: null, lastRevolutions: 0, jogging: null,
+      };
+      fetchMotor(m.id);
+      // Self-scheduling poll: wait for each request to finish before issuing
+      // the next, so slow/non-responding encoders can't flood the server and
+      // exhaust the browser's connection pool (which would also stall the
+      // motor control requests). Stagger motors so they don't all fire at once.
+      const ENC_POLL_MS = 500;
+      const scheduleEncoder = () => {
+        pollEncoder(m.id).finally(() => setTimeout(scheduleEncoder, ENC_POLL_MS));
+      };
+      setTimeout(scheduleEncoder, m.id * 120);
+
+      // End-stop equipped motors poll their status slowly even when idle so the
+      // limit indicators stay live (status reads don't touch the serial bus).
+      if (m.limits) {
+        setInterval(() => { if (units[m.id].liveTimer === null) pollLive(m.id); }, 600);
+      }
+    });
+
+    // ---------------- Pi 5 health ----------------
+    let healthVisible = false;
+    let healthTimer = null;
+
+    function toggleHealth() {
+      healthVisible = !healthVisible;
+      const card = document.getElementById('health-card');
+      card.classList.toggle('hidden', !healthVisible);
+      if (healthVisible) {
+        pollHealth();
+        if (!healthTimer) healthTimer = setInterval(pollHealth, 3000);
+      } else if (healthTimer) {
+        clearInterval(healthTimer); healthTimer = null;
+      }
+    }
+
+    // ---- head camera + emotion detection ----
+    const CC_EMOTIONS = [
+      { key: 'happy',    name: 'Happy',    emoji: '\uD83D\uDE00', cls: 'b-happy' },
+      { key: 'neutral',  name: 'Neutral',  emoji: '\uD83D\uDE10', cls: 'b-neutral' },
+      { key: 'surprise', name: 'Surprise', emoji: '\uD83D\uDE2E', cls: 'b-surprise' },
+      { key: 'sad',      name: 'Sad',      emoji: '\uD83D\uDE22', cls: 'b-sad' },
+      { key: 'angry',    name: 'Angry',    emoji: '\uD83D\uDE20', cls: 'b-angry' },
+      { key: 'fear',     name: 'Fear',     emoji: '\uD83D\uDE28', cls: 'b-fear' },
+    ];
+    const ccByKey = Object.fromEntries(CC_EMOTIONS.map(e => [e.key, e]));
+    let camVisible = false, camTimer = null;
+    let faceTrackOn = false;
+    let ringsOn = true;
+    let actLedOn = false;
+    (function buildCamBars() {
+      const host = document.getElementById('cc-bars');
+      CC_EMOTIONS.forEach(e => {
+        const row = document.createElement('div');
+        row.className = 'cc-emo';
+        row.innerHTML =
+          '<div class="row"><span class="name">' + e.emoji + ' ' + e.name + '</span>' +
+          '<span class="val" id="cc-val-' + e.key + '">0%</span></div>' +
+          '<div class="cc-bar ' + e.cls + '"><span id="cc-bar-' + e.key + '"></span></div>';
+        host.appendChild(row);
+      });
+    })();
+
+    function toggleCamera() {
+      camVisible = !camVisible;
+      const card = document.getElementById('camera-card');
+      const chip = document.getElementById('cam-chip');
+      card.classList.toggle('hidden', !camVisible);
+      chip.style.background = camVisible ? '#16291f' : '';
+      const img = document.getElementById('cc-img');
+      if (camVisible) {
+        // lazy-load the stream so the camera only starts when shown
+        img.onload = function () {
+          document.getElementById('cc-placeholder').style.display = 'none';
+          img.style.display = 'block';
+        };
+        img.onerror = function () {
+          document.getElementById('cc-placeholder').textContent = 'Camera unavailable';
+        };
+        img.src = '/camera/stream?t=' + Date.now();
+        pollEmotion();
+        pollFaceTracking();
+        syncRingsStatus();
+        syncActLedStatus();
+        if (!camTimer) camTimer = setInterval(function () {
+          pollEmotion();
+          pollFaceTracking();
+        }, 600);
+      } else {
+        if (camTimer) { clearInterval(camTimer); camTimer = null; }
+        if (faceTrackOn) {
+          faceTrackOn = false;
+          const fb = document.getElementById('cc-face-track-toggle');
+          if (fb) {
+            fb.classList.remove('on');
+            fb.innerHTML = '&#128100; Face tracking: OFF';
+          }
+          fetch('/face_tracking/enable', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ on: false }),
+          }).catch(function () {});
+        }
+        if (!emotionOn) {                   // restore emotion toggle on camera close
+          emotionOn = true;
+          const eb = document.getElementById('cc-emo-toggle');
+          eb.classList.add('on');
+          eb.innerHTML = '\u{1F603} Emotion: ON';
+          const side = document.querySelector('.cc-side');
+          if (side) side.style.opacity = '';
+          fetch('/emotion/enable', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ on: true }),
+          }).catch(function () {});
+        }
+        img.src = '';                       // release the MJPEG connection -> camera idles
+        img.style.display = 'none';
+        document.getElementById('cc-placeholder').style.display = '';
+        document.getElementById('cc-placeholder').textContent = 'Starting camera\u2026';
+      }
+    }
+
+    async function pollEmotion() {
+      try {
+        const r = await fetch('/emotion/latest', { cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json();
+        document.getElementById('cc-fps').textContent =
+          (d.fps ? Math.round(d.fps) : '\u2014') + ' fps';
+        const scores = d.scores || {};
+        CC_EMOTIONS.forEach(e => {
+          const pct = Math.round((scores[e.key] || 0) * 100);
+          const bar = document.getElementById('cc-bar-' + e.key);
+          const val = document.getElementById('cc-val-' + e.key);
+          if (bar) bar.style.width = pct + '%';
+          if (val) val.textContent = pct + '%';
+        });
+        if (d.dominant && d.face) {
+          const e = ccByKey[d.dominant] || ccByKey.neutral;
+          const pct = Math.round((scores[d.dominant] || 0) * 100);
+          document.getElementById('cc-emoji').textContent = e.emoji;
+          document.getElementById('cc-label').textContent = e.name;
+          document.getElementById('cc-conf').textContent = 'confidence ' + pct + '%';
+        } else {
+          document.getElementById('cc-emoji').textContent = '\uD83E\uDDD0';
+          document.getElementById('cc-label').textContent = d.live ? 'No face' : '\u2014';
+          document.getElementById('cc-conf').textContent = d.live ? 'searching\u2026' : 'camera off';
+        }
+      } catch (e) { /* offline */ }
+    }
+
+    // ---- emotion toggle ----
+    let emotionOn = true;
+
+    async function toggleEmotion() {
+      emotionOn = !emotionOn;
+      const btn = document.getElementById('cc-emo-toggle');
+      btn.classList.toggle('on', emotionOn);
+      btn.innerHTML = '&#128513; Emotion: ' + (emotionOn ? 'ON' : 'OFF');
+      // dim verdict + bars when off
+      const side = document.querySelector('.cc-side');
+      if (side) side.style.opacity = emotionOn ? '' : '0.35';
+      try {
+        await fetch('/emotion/enable', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ on: emotionOn }),
+        });
+      } catch (e) { /* offline */ }
+      if (!emotionOn) {
+        document.getElementById('cc-emoji').textContent = '\u2796';
+        document.getElementById('cc-label').textContent = 'off';
+        document.getElementById('cc-conf').textContent = '\u2014';
+        CC_EMOTIONS.forEach(e => {
+          const bar = document.getElementById('cc-bar-' + e.key);
+          const val = document.getElementById('cc-val-' + e.key);
+          if (bar) bar.style.width = '0%';
+          if (val) val.textContent = '0%';
+        });
+      }
+    }
+
+    async function testRings() {
+      const btn = document.getElementById('cc-rings-test');
+      const orig = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '\uD83D\uDCA1 Testing\u2026';
+      try {
+        const r = await fetch('/emotion/rings/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seconds: 4 }),
+        });
+        const d = await r.json();
+        if (!d.available) btn.innerHTML = '\u26A0\uFE0F Rings unavailable';
+      } catch (e) { /* offline */ }
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.innerHTML = orig;
+      }, 4200);
+    }
+
+    function renderRingsToggle() {
+      const btn = document.getElementById('cc-rings-toggle');
+      if (!btn) return;
+      btn.classList.toggle('on', ringsOn);
+      btn.innerHTML = '&#128161; LED rings: ' + (ringsOn ? 'ON' : 'OFF');
+    }
+
+    async function syncRingsStatus() {
+      try {
+        const r = await fetch('/emotion/rings', { cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (typeof d.enabled === 'boolean') ringsOn = d.enabled;
+        renderRingsToggle();
+      } catch (e) { /* offline */ }
+    }
+
+    async function toggleRings() {
+      const next = !ringsOn;
+      try {
+        const r = await fetch('/emotion/rings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ on: next }),
+        });
+        if (!r.ok) throw new Error('failed');
+        const d = await r.json();
+        ringsOn = (typeof d.enabled === 'boolean') ? d.enabled : next;
+      } catch (e) {
+        ringsOn = !next;
+      }
+      renderRingsToggle();
+    }
+
+    function renderActLedToggle() {
+      const btn = document.getElementById('cc-act-led-toggle');
+      if (!btn) return;
+      btn.classList.toggle('on', actLedOn);
+      btn.innerHTML = '&#128309; Pi ACT LED: ' + (actLedOn ? 'ON' : 'OFF');
+    }
+
+    async function syncActLedStatus() {
+      try {
+        const r = await fetch('/led/status', { cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json();
+        actLedOn = (d.status === 'on');
+        renderActLedToggle();
+      } catch (e) { /* offline */ }
+    }
+
+    async function toggleActLed() {
+      const next = !actLedOn;
+      try {
+        const r = await fetch(next ? '/led/on' : '/led/off', { method: 'POST' });
+        if (!r.ok) throw new Error('failed');
+        const d = await r.json();
+        actLedOn = (d.status === 'on');
+      } catch (e) {
+        actLedOn = !next;
+      }
+      renderActLedToggle();
+    }
+
+    async function toggleFaceTracking() {
+      faceTrackOn = !faceTrackOn;
+      const btn = document.getElementById('cc-face-track-toggle');
+      if (btn) {
+        btn.classList.toggle('on', faceTrackOn);
+        btn.innerHTML = '&#128100; Face tracking: ' + (faceTrackOn ? 'ON' : 'OFF');
+      }
+      try {
+        const r = await fetch('/face_tracking/enable', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ on: faceTrackOn }),
+        });
+        if (!r.ok) throw new Error('failed');
+      } catch (e) {
+        faceTrackOn = !faceTrackOn;
+        if (btn) {
+          btn.classList.toggle('on', faceTrackOn);
+          btn.innerHTML = '&#128100; Face tracking: ' + (faceTrackOn ? 'ON' : 'OFF');
+        }
+      }
+      pollFaceTracking();
+    }
+
+    async function pollFaceTracking() {
+      const hint = document.getElementById('cc-face-track-hint');
+      if (!hint) return;
+      try {
+        const r = await fetch('/face_tracking/status', { cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json();
+        faceTrackOn = !!d.enabled;
+        const btn = document.getElementById('cc-face-track-toggle');
+        if (btn) {
+          btn.classList.toggle('on', faceTrackOn);
+          btn.innerHTML = '&#128100; Face tracking: ' + (faceTrackOn ? 'ON' : 'OFF');
+        }
+        const speedBox = document.getElementById('cc-track-speed');
+        if (speedBox) speedBox.classList.toggle('show', faceTrackOn);
+        if (!trackSpeedDragging) {
+          if (Number.isFinite(d.pan_speed)) setTrackSlider('pan', d.pan_speed);
+          if (Number.isFinite(d.tilt_speed)) setTrackSlider('tilt', d.tilt_speed);
+        }
+        if (!faceTrackOn) {
+          hint.textContent = 'Head tracking uses Motors 1-4 + Axis 5 tilt.';
+          return;
+        }
+        if (!d.has_face) {
+          hint.textContent = 'Face tracking ON: searching for face...';
+          return;
+        }
+        const ex = (d.error_px && d.error_px.length > 0) ? d.error_px[0] : 0;
+        const ey = (d.error_px && d.error_px.length > 1) ? d.error_px[1] : 0;
+        const sps = d.motor_sps || 0;
+        const spsMap = d.motor_sps_map || {};
+        const mtxt = ['1','2','3','4'].map(k => 'M' + k + ':' + (spsMap[k] || 0)).join(' ');
+        const tilt = Number.isFinite(d.servo_angle) ? d.servo_angle.toFixed(1) : '--';
+        hint.textContent = 'Head lock: max ' + sps + ' sps (' + mtxt + '), tilt ' + tilt + '°, error [' + ex + ',' + ey + ']';
+      } catch (e) { /* offline */ }
+    }
+
+    // ---- face tracking speed sliders ----
+    let trackSpeedDragging = false;
+    let trackSpeedTimer = null;
+
+    function setTrackSlider(which, value) {
+      const s = document.getElementById('cc-track-' + which + '-speed');
+      const lbl = document.getElementById('cc-track-' + which + '-val');
+      if (s) s.value = value;
+      if (lbl) lbl.innerHTML = Number(value).toFixed(2) + '&times;';
+    }
+
+    function sendTrackSpeed() {
+      const pan = parseFloat(document.getElementById('cc-track-pan-speed').value);
+      const tilt = parseFloat(document.getElementById('cc-track-tilt-speed').value);
+      if (trackSpeedTimer) clearTimeout(trackSpeedTimer);
+      trackSpeedTimer = setTimeout(function () {
+        fetch('/face_tracking/speed', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pan: pan, tilt: tilt }),
+        }).catch(function () {});
+      }, 150);
+    }
+
+    (function wireTrackSpeed() {
+      ['pan', 'tilt'].forEach(function (which) {
+        const s = document.getElementById('cc-track-' + which + '-speed');
+        if (!s) return;
+        s.addEventListener('input', function () {
+          trackSpeedDragging = true;
+          const lbl = document.getElementById('cc-track-' + which + '-val');
+          if (lbl) lbl.innerHTML = Number(s.value).toFixed(2) + '&times;';
+          sendTrackSpeed();
+        });
+        s.addEventListener('change', function () { trackSpeedDragging = false; });
+      });
+    })();
+
+    function fmtUptime(s) {
+      if (s === null || s === undefined) return '--';
+      const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+      if (d) return `${d}d ${h}h`;
+      if (h) return `${h}h ${m}m`;
+      return `${m}m`;
+    }
+
+    function setBar(id, pct, warmAt, hotAt) {
+      const bar = document.getElementById(id);
+      if (!bar) return;
+      const v = (pct === null || pct === undefined) ? 0 : pct;
+      bar.style.width = Math.max(0, Math.min(100, v)) + '%';
+      bar.classList.toggle('hot', hotAt !== undefined && v >= hotAt);
+      bar.classList.toggle('warm', warmAt !== undefined && v >= warmAt && (hotAt === undefined || v < hotAt));
+    }
+
+    function setTempChip(t) {
+      const chip = document.getElementById('cpu-temp');
+      const val = document.getElementById('cpu-temp-val');
+      if (t === null || t === undefined) {
+        val.textContent = 'n/a'; chip.classList.remove('warm', 'hot');
+      } else {
+        val.textContent = t.toFixed(1);
+        chip.classList.toggle('hot', t >= 75);
+        chip.classList.toggle('warm', t >= 60 && t < 75);
+      }
+    }
+
+    async function pollHealth() {
+      try {
+        const r = await fetch('/system/health', { cache: 'no-store' });
+        const d = await r.json();
+        setTempChip(d.temp_c);
+
+        const $h = id => document.getElementById(id);
+
+        // CPU
+        $h('hc-cpu').textContent = d.cpu_percent != null ? d.cpu_percent + '%' : '--';
+        setBar('hc-cpu-bar', d.cpu_percent, 70, 90);
+        $h('hc-cpu-sub').textContent = d.load1 != null ? 'load ' + d.load1 : 'load --';
+
+        // Temp
+        $h('hc-temp').textContent = d.temp_c != null ? d.temp_c.toFixed(1) + '°C' : '--';
+        setBar('hc-temp-bar', d.temp_c != null ? (d.temp_c / 85 * 100) : 0, 70, 88);
+        $h('hc-freq').textContent = d.cpu_freq_mhz != null ? d.cpu_freq_mhz + ' MHz' : '-- MHz';
+
+        // Memory
+        const mem = d.mem || {};
+        $h('hc-mem').textContent = mem.percent != null ? mem.percent + '%' : '--';
+        setBar('hc-mem-bar', mem.percent, 70, 90);
+        $h('hc-mem-sub').textContent = (mem.used_mb != null ? mem.used_mb : '--') + ' / ' + (mem.total_mb != null ? mem.total_mb : '--') + ' MB';
+
+        // Disk
+        const disk = d.disk || {};
+        $h('hc-disk').textContent = disk.percent != null ? disk.percent + '%' : '--';
+        setBar('hc-disk-bar', disk.percent, 80, 92);
+        $h('hc-disk-sub').textContent = (disk.used_gb != null ? disk.used_gb : '--') + ' / ' + (disk.total_gb != null ? disk.total_gb : '--') + ' GB';
+
+        // Swap
+        const swap = d.swap || {};
+        $h('hc-swap').textContent = swap.percent != null ? swap.percent + '%' : '--';
+        setBar('hc-swap-bar', swap.percent, 25, 60);
+        $h('hc-swap-sub').textContent = (swap.used_mb != null ? swap.used_mb : '--') + ' / ' + (swap.total_mb != null ? swap.total_mb : '--') + ' MB';
+
+        // Network
+        const net = d.net || {};
+        $h('hc-net').textContent = net.ip ? net.ip : '--';
+        $h('hc-net-rate').innerHTML = '\u2193 ' + (net.rx_kbps != null ? net.rx_kbps : '--') + ' \u2191 ' + (net.tx_kbps != null ? net.tx_kbps : '--') + ' kB/s' + (net.iface ? ' \u00b7 ' + net.iface : '');
+
+        // Fan
+        $h('hc-fan').textContent = d.fan_rpm != null ? d.fan_rpm + ' RPM' : 'n/a';
+        $h('hc-fan-sub').textContent = d.fan_rpm != null ? (d.fan_rpm === 0 ? 'idle (passive)' : 'active cooler') : 'no tachometer';
+
+        // Power draw (V / A / W) from the PMIC
+        const pw = d.power || {};
+        $h('hc-power-w').textContent = pw.power_w != null ? pw.power_w.toFixed(2) + ' W' : 'n/a';
+        // The Pi 5 official supply is 5V/5A = 25W; bar warms as draw rises.
+        setBar('hc-power-bar', pw.power_w != null ? (pw.power_w / 25 * 100) : 0, 48, 80);
+        $h('hc-power-sub').textContent = (pw.voltage_v != null ? pw.voltage_v.toFixed(2) : '--') + ' V \u00b7 ' + (pw.current_a != null ? pw.current_a.toFixed(2) : '--') + ' A';
+
+        // Uptime + voltage
+        $h('hc-uptime').textContent = fmtUptime(d.uptime_s);
+        $h('hc-volt').textContent = d.voltage_v != null ? d.voltage_v.toFixed(2) + ' V core' : '-- V core';
+
+        // Power / throttling
+        const power = $h('hc-power');
+        const ptext = $h('hc-power-text');
+        const thr = d.throttled;
+        if (!thr) {
+          power.classList.remove('bad');
+          ptext.textContent = 'Power & throttling: n/a (vcgencmd unavailable)';
+        } else if (thr.active && thr.active.length) {
+          power.classList.add('bad');
+          ptext.textContent = '⚠ NOW: ' + thr.active.join(', ');
+        } else if (thr.past && thr.past.length) {
+          power.classList.remove('bad');
+          ptext.textContent = 'OK now · since boot: ' + thr.past.join(', ');
+        } else {
+          power.classList.remove('bad');
+          ptext.textContent = 'Power & throttling: healthy ✓';
+        }
+
+        $h('hc-updated').textContent = 'updated ' + new Date().toLocaleTimeString();
+      } catch (e) {
+        const val = document.getElementById('cpu-temp-val');
+        if (val) val.textContent = '--';
+      }
+    }
+
+    // Keep the header temp chip fresh even when the card is collapsed.
+    async function pollCpuTemp() {
+      try {
+        const r = await fetch('/system/temp', { cache: 'no-store' });
+        const d = await r.json();
+        setTempChip(d.temp_c);
+      } catch (e) {
+        const val = document.getElementById('cpu-temp-val');
+        if (val) val.textContent = '--';
+      }
+    }
+    pollCpuTemp();
+    setInterval(() => { if (!healthVisible) pollCpuTemp(); }, 4000);
+
+    // ---------------- Teach & Playback ----------------
+    const waypoints = [];      // [{ pose:{1:counts,...}, angles:{1:deg,...}, dwell:Number|null }]
+    let freedriveOn = false;
+    let armPollTimer = null;
+
+    const $ = id => document.getElementById(id);
+
+    function fmtAngle(v) {
+      return (v === null || v === undefined) ? '—' : Number(v).toFixed(1);
+    }
+
+    function renderWaypoints(currentIdx) {
+      const rows = $('t-rows');
+      $('t-empty').style.display = waypoints.length ? 'none' : 'block';
+      rows.innerHTML = waypoints.map((wp, idx) => {
+        const a = wp.angles || {};
+        const cur = (idx + 1 === currentIdx) ? ' class="current"' : '';
+        const dwell = (wp.dwell === null || wp.dwell === undefined) ? '' : wp.dwell;
+        return `<tr${cur}>
+          <td>${idx + 1}</td>
+          <td>${fmtAngle(a[1])}</td><td>${fmtAngle(a[2])}</td>
+          <td>${fmtAngle(a[3])}</td><td>${fmtAngle(a[4])}</td>
+          <td><input class="dwell" type="number" min="0" step="0.1"
+                value="${dwell}" data-idx="${idx}" placeholder="def"></td>
+          <td class="actions">
+            <button class="btn-t" data-go="${idx}">Go</button>
+            <button class="btn-t danger" data-del="${idx}">Del</button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    async function recordWaypoint() {
+      try {
+        const r = await fetch('/arm/capture', { method: 'POST' });
+        const d = await r.json();
+        waypoints.push({ pose: d.pose, angles: d.angles, dwell: null });
+        renderWaypoints();
+      } catch (e) { setStatus('capture failed', false); }
+    }
+
+    function setStatus(text, playing) {
+      $('t-status-text').textContent = text;
+      $('t-status').classList.toggle('playing', !!playing);
+    }
+
+    async function toggleFreedrive() {
+      freedriveOn = !freedriveOn;
+      const btn = $('t-freedrive');
+      btn.textContent = 'Free-drive: ' + (freedriveOn ? 'ON' : 'OFF');
+      btn.classList.toggle('active', freedriveOn);
+      try {
+        await fetch('/arm/freedrive', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ on: freedriveOn }),
+        });
+      } catch (e) { /* ignore */ }
+    }
+
+    function playPayload(list) {
+      return {
+        waypoints: list,
+        speed: parseInt($('t-speed').value, 10) / 100,
+        loops: parseInt($('t-loops').value, 10) || 0,
+        dwell: parseFloat($('t-dwell').value) || 0,
+      };
+    }
+
+    async function play(list) {
+      if (!list.length) { setStatus('no waypoints to play', false); return; }
+      if (freedriveOn) await toggleFreedrive();   // energize before moving
+      try {
+        const r = await fetch('/arm/play', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(playPayload(list)),
+        });
+        if (r.status === 409) { setStatus('already playing', true); return; }
+        startArmPolling();
+      } catch (e) { setStatus('play failed', false); }
+    }
+
+    async function stopPlayback() {
+      try { await fetch('/arm/stop', { method: 'POST' }); } catch (e) {}
+    }
+
+    function startArmPolling() {
+      if (armPollTimer) return;
+      const tick = async () => {
+        try {
+          const r = await fetch('/arm/status');
+          const s = await r.json();
+          const loops = s.loops ? `${s.loop}/${s.loops}` : `${s.loop} (∞)`;
+          if (s.playing) {
+            setStatus(`${s.message} · loop ${loops}`, true);
+            renderWaypoints(s.waypoint);
+          } else {
+            setStatus(s.message || 'idle', false);
+            renderWaypoints();
+            armPollTimer = null;
+            return;   // stop polling
+          }
+        } catch (e) {}
+        armPollTimer = setTimeout(tick, 350);
+      };
+      armPollTimer = setTimeout(tick, 100);
+    }
+
+    // ---- program persistence ----
+    async function refreshPrograms() {
+      try {
+        const r = await fetch('/programs');
+        const d = await r.json();
+        const sel = $('t-progs');
+        sel.innerHTML = '<option value="">— saved programs —</option>' +
+          (d.programs || []).map(n => `<option value="${n}">${n}</option>`).join('');
+      } catch (e) {}
+    }
+
+    async function saveProgram() {
+      const name = $('t-name').value.trim();
+      if (!name) { setStatus('enter a program name', false); return; }
+      const body = {
+        waypoints,
+        loops: parseInt($('t-loops').value, 10) || 0,
+        speed: parseInt($('t-speed').value, 10),
+        dwell: parseFloat($('t-dwell').value) || 0,
+      };
+      try {
+        const r = await fetch('/programs/' + encodeURIComponent(name), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) { setStatus('save failed', false); return; }
+        setStatus('saved "' + name + '"', false);
+        refreshPrograms();
+      } catch (e) { setStatus('save failed', false); }
+    }
+
+    async function loadProgram() {
+      const name = $('t-progs').value;
+      if (!name) return;
+      try {
+        const r = await fetch('/programs/' + encodeURIComponent(name));
+        if (!r.ok) { setStatus('load failed', false); return; }
+        const d = await r.json();
+        waypoints.length = 0;
+        (d.waypoints || []).forEach(w => waypoints.push(w));
+        if (d.loops !== undefined) $('t-loops').value = d.loops;
+        if (d.speed !== undefined) { $('t-speed').value = d.speed; $('t-speed-val').textContent = d.speed + '%'; }
+        if (d.dwell !== undefined) $('t-dwell').value = d.dwell;
+        $('t-name').value = name;
+        renderWaypoints();
+        setStatus('loaded "' + name + '" (' + waypoints.length + ' waypoints)', false);
+      } catch (e) { setStatus('load failed', false); }
+    }
+
+    async function deleteProgram() {
+      const name = $('t-progs').value;
+      if (!name) return;
+      try {
+        await fetch('/programs/' + encodeURIComponent(name), { method: 'DELETE' });
+        setStatus('deleted "' + name + '"', false);
+        refreshPrograms();
+      } catch (e) {}
+    }
+
+    // ---- wire up controls ----
+    $('t-freedrive').addEventListener('click', toggleFreedrive);
+    $('t-record').addEventListener('click', recordWaypoint);
+    $('t-play').addEventListener('click', () => play(waypoints));
+    $('t-stop').addEventListener('click', stopPlayback);
+    $('t-clear').addEventListener('click', () => { waypoints.length = 0; renderWaypoints(); });
+    $('t-save').addEventListener('click', saveProgram);
+    $('t-load').addEventListener('click', loadProgram);
+    $('t-delete').addEventListener('click', deleteProgram);
+    $('t-speed').addEventListener('input', e => { $('t-speed-val').textContent = e.target.value + '%'; });
+
+    $('t-rows').addEventListener('click', e => {
+      const go = e.target.getAttribute('data-go');
+      const del = e.target.getAttribute('data-del');
+      if (go !== null && go !== undefined) play([waypoints[+go]]);
+      else if (del !== null && del !== undefined) { waypoints.splice(+del, 1); renderWaypoints(); }
+    });
+    $('t-rows').addEventListener('change', e => {
+      const idx = e.target.getAttribute('data-idx');
+      if (idx !== null && idx !== undefined) {
+        const v = e.target.value.trim();
+        waypoints[+idx].dwell = v === '' ? null : parseFloat(v);
+      }
+    });
+
+    renderWaypoints();
+    refreshPrograms();
+    initServos();
+  </script>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+      "three/examples/jsm/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+      "urdf-loader": "https://unpkg.com/urdf-loader@0.12.6/src/URDFLoader.js"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+    import URDFLoader from 'urdf-loader';
+
+    const stage = document.getElementById('twin-stage');
+    const host = document.getElementById('twin-canvas');
+    const toggleBtn = document.getElementById('twin-toggle');
+    const zeroBtn = document.getElementById('twin-zero');
+    const statusEl = document.getElementById('twin-status');
+    const modesEl = document.getElementById('twin-modes');
+    const modeMirrorBtn = document.getElementById('twin-mode-mirror');
+    const modeCommandBtn = document.getElementById('twin-mode-command');
+    const cmdPanel = document.getElementById('twin-cmd');
+    const cmdSliders = document.getElementById('twin-cmd-sliders');
+    const speedEl = document.getElementById('twin-speed');
+    const speedValEl = document.getElementById('twin-speed-val');
+    const armEl = document.getElementById('twin-arm');
+    const sendBtn = document.getElementById('twin-send');
+    const stopMoveBtn = document.getElementById('twin-stop-move');
+    const moveStatusEl = document.getElementById('twin-move-status');
+    const limitRowsEl = document.getElementById('twin-limits-rows');
+    const limitApplyBtn = document.getElementById('twin-limits-apply');
+
+    const TWIN_LIMITS_KEY = 'twin_limits_v1';
+    let inited = false, on = false;
+    let mode = 'mirror';                // 'mirror' | 'command'
+    let renderer, scene, camera, controls, robot = null;
+    let raf = 0, pollTimer = 0, moveTimer = 0;
+    let commandable = [];               // ['joint1', ...] joints that drive hardware
+    let limits = {};                   // joint -> [loRad, hiRad]
+    const targetAngles = {};   // joint -> desired radians (from /joint_states)
+    const curAngles = {};      // joint -> smoothed radians applied to model
+    const SMOOTH = 0.25;
+    const RAD2DEG = 180 / Math.PI, DEG2RAD = Math.PI / 180;
+
+    function setStatus(text, cls) {
+      statusEl.textContent = text;
+      statusEl.className = 'twin-status' + (cls ? ' ' + cls : '');
+    }
+
+    function init() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0e1116);
+      camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
+      camera.position.set(0.8, 0.8, 0.8);
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      host.appendChild(renderer.domElement);
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+      const d1 = new THREE.DirectionalLight(0xffffff, 1.1); d1.position.set(1, 1.5, 1); scene.add(d1);
+      const d2 = new THREE.DirectionalLight(0x88aaff, 0.4); d2.position.set(-1, 0.5, -1); scene.add(d2);
+      scene.add(new THREE.GridHelper(2, 20, 0x2a3142, 0x1c2130));
+
+      const manager = new THREE.LoadingManager();
+      manager.onLoad = () => { if (robot) { frameRobot(); setStatus('live', 'live'); } };
+      const loader = new URDFLoader(manager);
+      loader.loadMeshCb = (path, mgr, done) => {
+        new STLLoader(mgr).load(path, geom => {
+          geom.computeVertexNormals();
+          done(new THREE.Mesh(geom, new THREE.MeshStandardMaterial(
+            { color: 0xbfc6d2, metalness: 0.35, roughness: 0.55 })));
+        }, undefined, err => done(null, err));
+      };
+      loader.load('/static/robot/robot.urdf', result => {
+        robot = result;
+        robot.rotation.x = -Math.PI / 2;   // URDF Z-up -> three Y-up
+        scene.add(robot);
+        Object.values(robot.joints).forEach(j => {
+          if (j.jointType !== 'fixed') { targetAngles[j.name] = 0; curAngles[j.name] = 0; }
+        });
+      }, undefined, () => setStatus('model load error', 'err'));
+
+      window.addEventListener('resize', () => { if (on) resize(); });
+      inited = true;
+    }
+
+    function resize() {
+      const w = stage.clientWidth, h = stage.clientHeight;
+      if (!w || !h) return;
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+
+    function frameRobot() {
+      const box = new THREE.Box3().setFromObject(robot);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      controls.target.copy(center);
+      camera.position.copy(center).add(new THREE.Vector3(1, 0.8, 1).normalize().multiplyScalar(maxDim * 1.9));
+      camera.near = maxDim / 100; camera.far = maxDim * 100; camera.updateProjectionMatrix();
+      controls.update();
+    }
+
+    function animate() {
+      raf = requestAnimationFrame(animate);
+      if (robot) {
+        for (const name in targetAngles) {
+          const cur = curAngles[name] || 0;
+          const next = cur + (targetAngles[name] - cur) * SMOOTH;
+          curAngles[name] = next;
+          robot.setJointValue(name, next);
+        }
+      }
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    async function fetchJoints() {
+      try {
+        const r = await fetch('/joint_states', { cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (d.angles) for (const name in d.angles) targetAngles[name] = d.angles[name];
+      } catch (e) { /* offline */ }
+    }
+
+    async function setEnabled(state) {
+      try {
+        await fetch('/twin/enable', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ on: state }),
+        });
+      } catch (e) { /* offline */ }
+    }
+
+    toggleBtn.addEventListener('click', () => {
+      on = !on;
+      if (on) {
+        stage.style.display = 'block';
+        if (!inited) init();
+        requestAnimationFrame(() => { resize(); });
+        setStatus('loading…');
+        loadConfig();
+        if (!raf) animate();
+        toggleBtn.textContent = 'Hide twin';
+        zeroBtn.disabled = false;
+        modesEl.style.display = 'inline-flex';
+        setMode('mirror');
+      } else {
+        stage.style.display = 'none';
+        setEnabled(false);
+        stopPolling();
+        if (moveTimer) { clearInterval(moveTimer); moveTimer = 0; }
+        if (raf) { cancelAnimationFrame(raf); raf = 0; }
+        toggleBtn.textContent = 'Show twin';
+        zeroBtn.disabled = true;
+        modesEl.style.display = 'none';
+        cmdPanel.style.display = 'none';
+        setStatus('off');
+      }
+    });
+
+    function stopPolling() {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = 0; }
+    }
+
+    function setMode(m) {
+      mode = m;
+      modeMirrorBtn.classList.toggle('active', m === 'mirror');
+      modeCommandBtn.classList.toggle('active', m === 'command');
+      if (m === 'mirror') {
+        cmdPanel.style.display = 'none';
+        setEnabled(true);
+        if (!pollTimer) pollTimer = setInterval(fetchJoints, 120);
+        setStatus('live', 'live');
+      } else {
+        // Command mode: stop mirroring so the sliders own the pose.
+        setEnabled(false);
+        stopPolling();
+        cmdPanel.style.display = 'block';
+        buildCommandUI();
+        setStatus('command', 'live');
+      }
+    }
+
+    modeMirrorBtn.addEventListener('click', () => { if (mode !== 'mirror') setMode('mirror'); });
+    modeCommandBtn.addEventListener('click', () => { if (mode !== 'command') setMode('command'); });
+
+    async function loadConfig() {
+      try {
+        const r = await fetch('/twin/config', { cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json();
+        commandable = d.commandable || [];
+        limits = {};
+        for (const name in (d.limits || {})) limits[name] = d.limits[name].slice();
+      } catch (e) { /* offline */ }
+      // Local overrides win (last edited limits).
+      try {
+        const saved = JSON.parse(localStorage.getItem(TWIN_LIMITS_KEY) || 'null');
+        if (saved) for (const name in saved) if (limits[name]) limits[name] = saved[name];
+      } catch (e) { /* ignore */ }
+    }
+
+    function buildCommandUI() {
+      cmdSliders.innerHTML = '';
+      limitRowsEl.innerHTML = '';
+      commandable.forEach(name => {
+        const lim = limits[name] || [-Math.PI, Math.PI];
+        const loDeg = Math.round(lim[0] * RAD2DEG), hiDeg = Math.round(lim[1] * RAD2DEG);
+        const cur = (targetAngles[name] || 0) * RAD2DEG;
+
+        const row = document.createElement('label');
+        row.className = 'twin-jrow';
+        row.innerHTML =
+          `<span>${name}</span>` +
+          `<input type="range" min="${loDeg}" max="${hiDeg}" step="1" value="${Math.round(cur)}" data-j="${name}">` +
+          `<span class="v" id="twin-v-${name}">${Math.round(cur)}&deg;</span>`;
+        const slider = row.querySelector('input');
+        slider.addEventListener('input', () => {
+          const deg = parseFloat(slider.value);
+          targetAngles[name] = deg * DEG2RAD;
+          document.getElementById('twin-v-' + name).textContent = Math.round(deg) + '\u00b0';
+        });
+        cmdSliders.appendChild(row);
+
+        const lrow = document.createElement('div');
+        lrow.className = 'twin-lrow';
+        lrow.innerHTML =
+          `<span>${name}</span>` +
+          `<input type="number" step="1" value="${loDeg}" data-lim="${name}" data-edge="lo" placeholder="min°">` +
+          `<input type="number" step="1" value="${hiDeg}" data-lim="${name}" data-edge="hi" placeholder="max°">`;
+        limitRowsEl.appendChild(lrow);
+      });
+    }
+
+    speedEl.addEventListener('input', () => {
+      speedValEl.textContent = parseFloat(speedEl.value).toFixed(2) + '\u00d7';
+    });
+
+    armEl.addEventListener('change', () => { sendBtn.disabled = !armEl.checked; });
+
+    sendBtn.addEventListener('click', async () => {
+      if (!armEl.checked) return;
+      const angles = {};
+      commandable.forEach(name => { angles[name] = targetAngles[name] || 0; });
+      setMoveStatus('sending…');
+      try {
+        const r = await fetch('/twin/move', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ angles, speed: parseFloat(speedEl.value) }),
+        });
+        const d = await r.json();
+        if (!d.started) { setMoveStatus(d.message || 'rejected', 'err'); return; }
+        setMoveStatus('moving…');
+        startMovePolling();
+      } catch (e) { setMoveStatus('offline', 'err'); }
+    });
+
+    stopMoveBtn.addEventListener('click', async () => {
+      try { await fetch('/twin/stop', { method: 'POST' }); } catch (e) { /* offline */ }
+      setMoveStatus('stopped', 'err');
+      if (moveTimer) { clearInterval(moveTimer); moveTimer = 0; }
+    });
+
+    function startMovePolling() {
+      if (moveTimer) clearInterval(moveTimer);
+      moveTimer = setInterval(async () => {
+        try {
+          const r = await fetch('/twin/move_status', { cache: 'no-store' });
+          const d = await r.json();
+          if (!d.moving) {
+            clearInterval(moveTimer); moveTimer = 0;
+            setMoveStatus(d.message || 'done', d.ok === false ? 'err' : 'live');
+          } else {
+            setMoveStatus(d.message || 'moving…');
+          }
+        } catch (e) { /* offline */ }
+      }, 300);
+    }
+
+    function setMoveStatus(text, cls) {
+      moveStatusEl.textContent = text;
+      moveStatusEl.className = 'twin-status' + (cls ? ' ' + cls : '');
+    }
+
+    limitApplyBtn.addEventListener('click', async () => {
+      const out = {};
+      limitRowsEl.querySelectorAll('input[data-lim]').forEach(inp => {
+        const name = inp.dataset.lim;
+        if (!out[name]) out[name] = [null, null];
+        const v = parseFloat(inp.value) * DEG2RAD;
+        out[name][inp.dataset.edge === 'lo' ? 0 : 1] = v;
+      });
+      for (const name in out) {
+        let [lo, hi] = out[name];
+        if (lo > hi) { const t = lo; lo = hi; hi = t; }
+        limits[name] = [lo, hi];
+      }
+      try {
+        localStorage.setItem(TWIN_LIMITS_KEY, JSON.stringify(limits));
+        await fetch('/twin/limits', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ limits }),
+        });
+      } catch (e) { /* offline */ }
+      buildCommandUI();   // rebuild sliders with new ranges
+      setMoveStatus('limits applied', 'live');
+    });
+
+    zeroBtn.addEventListener('click', async () => {
+      try {
+        const r = await fetch('/twin/zero', { method: 'POST' });
+        const d = await r.json();
+        if (mode === 'mirror' && d.angles) {
+          for (const name in d.angles) targetAngles[name] = d.angles[name];
+        } else {
+          // In command mode home means "all joints 0" relative to the new zero.
+          commandable.forEach(name => { targetAngles[name] = 0; });
+          buildCommandUI();
+        }
+        setStatus('home set', 'live');
+      } catch (e) { /* offline */ }
+    });
+  </script>
+</body>
+</html>

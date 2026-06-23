@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="860" viewBox="0 0 1280 860" font-family="'Segoe UI', Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#10141d"/>
+      <stop offset="1" stop-color="#0a0d14"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#fbbf24"/>
+    </marker>
+  </defs>
+
+  <rect width="1280" height="860" fill="url(#bg)"/>
+
+  <!-- header -->
+  <text x="70" y="48" fill="#f3f4f6" font-size="26" font-weight="700">MIRO &#183; design upgrade notes</text>
+  <text x="70" y="74" fill="#7b8290" font-size="14">Fully 3D-printed 6-axis arm &#8212; suggestions tuned for FDM printability (fillets over chamfers, captured nuts, print-friendly seams).</text>
+
+  <!-- robot render -->
+  <g filter="url(#soft)">
+    <rect x="58" y="92" width="556" height="724" rx="14" fill="#05070c" stroke="#1c2230"/>
+    <image href="MIRO.PNG" x="72" y="96" width="528" height="704" preserveAspectRatio="xMidYMid meet"/>
+  </g>
+
+  <!-- callout markers on the render -->
+  <g font-size="15" font-weight="700">
+    <!-- 1 base -->
+    <g><circle cx="336" cy="730" r="15" fill="#1b1408" stroke="#fbbf24" stroke-width="2"/><text x="336" y="735" fill="#fbbf24" text-anchor="middle">1</text></g>
+    <!-- 2 base/body seam -->
+    <g><circle cx="250" cy="600" r="15" fill="#1b1408" stroke="#fbbf24" stroke-width="2"/><text x="250" y="605" fill="#fbbf24" text-anchor="middle">2</text></g>
+    <!-- 3 shoulder dome -->
+    <g><circle cx="232" cy="432" r="15" fill="#1b1408" stroke="#fbbf24" stroke-width="2"/><text x="232" y="437" fill="#fbbf24" text-anchor="middle">3</text></g>
+    <!-- 4 upper arm link -->
+    <g><circle cx="300" cy="318" r="15" fill="#1b1408" stroke="#fbbf24" stroke-width="2"/><text x="300" y="323" fill="#fbbf24" text-anchor="middle">4</text></g>
+    <!-- 5 forearm segmented joints -->
+    <g><circle cx="430" cy="216" r="15" fill="#1b1408" stroke="#fbbf24" stroke-width="2"/><text x="430" y="221" fill="#fbbf24" text-anchor="middle">5</text></g>
+    <!-- 6 wrist / tool -->
+    <g><circle cx="520" cy="300" r="15" fill="#1b1408" stroke="#fbbf24" stroke-width="2"/><text x="520" y="305" fill="#fbbf24" text-anchor="middle">6</text></g>
+    <!-- 7 overall finish (points to mid body) -->
+    <g><circle cx="350" cy="520" r="15" fill="#0e2018" stroke="#34d399" stroke-width="2"/><text x="350" y="525" fill="#34d399" text-anchor="middle">7</text></g>
+  </g>
+
+  <!-- ===================== legend panel ===================== -->
+  <g transform="translate(648,96)">
+    <rect x="0" y="0" width="572" height="704" rx="14" fill="#141925" stroke="#232a3a"/>
+
+    <text x="24" y="40" fill="#cdd3e1" font-size="16" font-weight="700">Region-by-region upgrades</text>
+
+    <!-- item 1 -->
+    <g transform="translate(24,60)">
+      <circle cx="13" cy="13" r="13" fill="#1b1408" stroke="#fbbf24" stroke-width="2"/><text x="13" y="18" fill="#fbbf24" font-size="13" font-weight="700" text-anchor="middle">1</text>
+      <text x="38" y="12" fill="#e6e9ef" font-size="14" font-weight="600">Base &#8212; unify the stacked block</text>
+      <text x="38" y="32" fill="#8a92a6" font-size="12.5">One filleted hex/cylinder puck, not visible stock layers. Add a</text>
+      <text x="38" y="50" fill="#8a92a6" font-size="12.5">recessed M4 bolt-circle (captured-nut pockets) + rear cable gland.</text>
+    </g>
+
+    <!-- item 2 -->
+    <g transform="translate(24,142)">
+      <circle cx="13" cy="13" r="13" fill="#1b1408" stroke="#fbbf24" stroke-width="2"/><text x="13" y="18" fill="#fbbf24" font-size="13" font-weight="700" text-anchor="middle">2</text>
+      <text x="38" y="12" fill="#e6e9ef" font-size="14" font-weight="600">Copper / grey transition</text>
+      <text x="38" y="32" fill="#8a92a6" font-size="12.5">Print a thin black spacer ring between base and body so the two</text>
+      <text x="38" y="50" fill="#8a92a6" font-size="12.5">colors read as intentional &#8212; hides the layer seam too.</text>
+    </g>
+
+    <!-- item 3 -->
+    <g transform="translate(24,224)">
+      <circle cx="13" cy="13" r="13" fill="#1b1408" stroke="#fbbf24" stroke-width="2"/><text x="13" y="18" fill="#fbbf24" font-size="13" font-weight="700" text-anchor="middle">3</text>
+      <text x="38" y="12" fill="#e6e9ef" font-size="14" font-weight="600">Shoulder dome &#8212; your signature</text>
+      <text x="38" y="32" fill="#8a92a6" font-size="12.5">Turn the sphere split into a deliberate recessed panel-line groove.</text>
+      <text x="38" y="50" fill="#8a92a6" font-size="12.5">Add a bolt-pattern bearing cap; blend dome-to-body with a fillet.</text>
+    </g>
+
+    <!-- item 4 -->
+    <g transform="translate(24,306)">
+      <circle cx="13" cy="13" r="13" fill="#1b1408" stroke="#fbbf24" stroke-width="2"/><text x="13" y="18" fill="#fbbf24" font-size="13" font-weight="700" text-anchor="middle">4</text>
+      <text x="38" y="12" fill="#e6e9ef" font-size="14" font-weight="600">Links &#8212; add relief flutes</text>
+      <text x="38" y="32" fill="#8a92a6" font-size="12.5">Scoop a shallow channel down each slab-sided link (the UR / Franka</text>
+      <text x="38" y="50" fill="#8a92a6" font-size="12.5">look). Biggest single &#8220;fancy&#8221; win &#8212; and it saves print material.</text>
+    </g>
+
+    <!-- item 5 -->
+    <g transform="translate(24,388)">
+      <circle cx="13" cy="13" r="13" fill="#1b1408" stroke="#fbbf24" stroke-width="2"/><text x="13" y="18" fill="#fbbf24" font-size="13" font-weight="700" text-anchor="middle">5</text>
+      <text x="38" y="12" fill="#e6e9ef" font-size="14" font-weight="600">Forearm joints &#8212; de-clutter</text>
+      <text x="38" y="32" fill="#8a92a6" font-size="12.5">The stacked rings look like vacuum hose. Commit to clean cylindrical</text>
+      <text x="38" y="50" fill="#8a92a6" font-size="12.5">housings with ONE split line each; print seam at the parting plane.</text>
+    </g>
+
+    <!-- item 6 -->
+    <g transform="translate(24,470)">
+      <circle cx="13" cy="13" r="13" fill="#1b1408" stroke="#fbbf24" stroke-width="2"/><text x="13" y="18" fill="#fbbf24" font-size="13" font-weight="700" text-anchor="middle">6</text>
+      <text x="38" y="12" fill="#e6e9ef" font-size="14" font-weight="600">Wrist &amp; tool &#8212; round + bezel</text>
+      <text x="38" y="32" fill="#8a92a6" font-size="12.5">Fillet the boxy wrist to match the arm. Give the camera a proper</text>
+      <text x="38" y="50" fill="#8a92a6" font-size="12.5">lens bezel + LED light-pipe, on an ISO-9409 style tool flange.</text>
+    </g>
+
+    <!-- item 7 -->
+    <g transform="translate(24,552)">
+      <circle cx="13" cy="13" r="13" fill="#0e2018" stroke="#34d399" stroke-width="2"/><text x="13" y="18" fill="#34d399" font-size="13" font-weight="700" text-anchor="middle">7</text>
+      <text x="38" y="12" fill="#e6e9ef" font-size="14" font-weight="600">Whole-arm finish &amp; print tips</text>
+      <text x="38" y="32" fill="#8a92a6" font-size="12.5">One fillet-radius family everywhere &#183; tri-tone (grey + copper + ONE</text>
+      <text x="38" y="50" fill="#8a92a6" font-size="12.5">accent on joint caps) &#183; embossed &#8220;MIRO&#8221; logo &#183; engraved axis index</text>
+      <text x="38" y="68" fill="#8a92a6" font-size="12.5">marks &#183; molded rear cable channels &#183; orient seams to hide layer lines.</text>
+    </g>
+
+    <!-- 3D-print note strip -->
+    <g transform="translate(24,644)">
+      <rect x="0" y="0" width="524" height="44" rx="9" fill="#0e1a16" stroke="#1c4a31"/>
+      <text x="14" y="19" fill="#34d399" font-size="12.5" font-weight="700">FDM-first:</text>
+      <text x="86" y="19" fill="#9fe6c2" font-size="12">prefer fillets over chamfers, captured-nut pockets, split parts on flat</text>
+      <text x="14" y="36" fill="#9fe6c2" font-size="12">faces, design overhangs &lt; 45&#176;, and add vase-mode-friendly grooves for accents.</text>
+    </g>
+  </g>
+</svg>

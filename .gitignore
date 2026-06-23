@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.claude/
+led_app/programs/
+
+# Vision models (downloaded by scripts/setup_vision.sh, too large for git)
+led_app/models/
+*.onnx
+
+# Raw SolidWorks CAD export (source only; the runtime URDF/meshes live in
+# led_app/static/robot/). Large and not needed to build or deploy.
+/TOP Level assembly robotic/
+/TOP Level assembly robotic.rar
+

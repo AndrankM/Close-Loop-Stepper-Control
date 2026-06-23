@@ -1,0 +1,7 @@
+put -o "d:\Git CLones\PI SSH Test\led_app\static\robot\robot.urdf" /home/andpi5/led_app/static/robot/robot.urdf
+put -o "d:\Git CLones\PI SSH Test\led_app\static\robot\meshes\axis1.STL" /home/andpi5/led_app/static/robot/meshes/axis1.STL
+put -o "d:\Git CLones\PI SSH Test\led_app\static\robot\meshes\axis2.STL" /home/andpi5/led_app/static/robot/meshes/axis2.STL
+put -o "d:\Git CLones\PI SSH Test\led_app\static\robot\meshes\axis3.STL" /home/andpi5/led_app/static/robot/meshes/axis3.STL
+put -o "d:\Git CLones\PI SSH Test\led_app\static\robot\meshes\axis4.STL" /home/andpi5/led_app/static/robot/meshes/axis4.STL
+put -o "d:\Git CLones\PI SSH Test\led_app\static\robot\meshes\axis5.STL" /home/andpi5/led_app/static/robot/meshes/axis5.STL
+put -o "d:\Git CLones\PI SSH Test\led_app\static\robot\meshes\axis6.STL" /home/andpi5/led_app/static/robot/meshes/axis6.STL
