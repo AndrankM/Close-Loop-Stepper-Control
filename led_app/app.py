@@ -412,12 +412,13 @@ MOTOR4_GEAR_RATIO = 1.0
 # Motor 2 dedicated Hall end-stops:
 #   CW  limit -> GPIO 5
 #   CCW limit -> GPIO 6
-# Default: active-low (idle HIGH, trigger pulls to 0V).  If a sensor idles LOW
-# instead (active-HIGH wiring), flip the matching env var to 0 without touching
-# the code: M2_LIMIT_CW_ACTIVE_LOW=0 or M2_LIMIT_CCW_ACTIVE_LOW=0.
+# Sensors are active-HIGH: idle = 0 V, triggered (at limit) = 3.3 V.
+# pull_up=False (internal pull-down) → is_active when HIGH.
+# Override per sensor via env var if wiring differs:
+#   M2_LIMIT_CW_ACTIVE_LOW=1  or  M2_LIMIT_CCW_ACTIVE_LOW=1
 M2_LIMIT_CW_PIN = 5
 M2_LIMIT_CCW_PIN = 6
-M2_LIMIT_ACTIVE_LOW = True  # legacy fallback used if per-pin var is absent
+M2_LIMIT_ACTIVE_LOW = False  # active-HIGH sensors: is_active when pin = 3.3 V
 def _env_bool(name, default):
     v = os.environ.get(name, "").strip().lower()
     return default if v == "" else v not in ("0", "false", "no", "off")
