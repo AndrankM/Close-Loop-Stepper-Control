@@ -876,15 +876,30 @@ class StepperMotor:
         """End-stop info, or None if this motor has no limit switch."""
         if self._limit is None and self._limit_cw is None and self._limit_ccw is None:
             return None
-        # Report the state the _run() thread is actually acting on, not a
-        # fresh live re-read that can disagree with it and cause UI flicker.
+        if self._limit_cw is not None or self._limit_ccw is not None:
+            # Dedicated per-direction sensors: read live so UI is always current
+            # regardless of whether the motor is moving.
+            cw  = self._limit_pressed_cw()
+            ccw = self._limit_pressed_ccw()
+            if cw and ccw:
+                cw = ccw = False  # physically impossible — treat as noise
+            bd = "cw" if cw else ("ccw" if ccw else None)
+            return {
+                "pressed": bd is not None,
+                "blocked_dir": bd,
+                "cw": cw,
+                "ccw": ccw,
+                "shared": False,
+            }
+        # Shared end-stop line: need direction context from _run() thread.
         bd = self._blocked_dir
+        pressed = self._limit_pressed()
         return {
-            "pressed": bd is not None,
-            "blocked_dir": bd,
-            "cw": bd == "cw",
-            "ccw": bd == "ccw",
-            "shared": self._limit_pressed() if self._limit is not None else False,
+            "pressed": pressed,
+            "blocked_dir": bd if pressed else None,
+            "cw": pressed and bd == "cw",
+            "ccw": pressed and bd == "ccw",
+            "shared": pressed,
         }
 
     def status(self):
