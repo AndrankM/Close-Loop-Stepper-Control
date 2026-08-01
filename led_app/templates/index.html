@@ -945,10 +945,10 @@
   <script>
     // Motor definitions: id, friendly name, wiring note, and gear reduction.
     const MOTORS = [
-      { id: 1, name: 'Joint 4 · Motor 1', gear: 5, wiring: 'EN GPIO17 · STP GPIO27 · DIR GPIO22 · addr 0xE0 · 5:1 planetary' },
-      { id: 2, name: 'Joint 3 · Motor 2', gear: 5, limits: true, limitTitle: 'Hall limits: CW GPIO5, CCW GPIO6 (active-low)', wiring: 'EN GPIO2 · STP GPIO3 · DIR GPIO4 · addr 0xE1 · 5:1 planetary · hall limits CW GPIO5 / CCW GPIO6' },
+      { id: 1, name: 'Joint 4 · Motor 1', gear: 5, limits: true, limitTitle: 'Shared travel limit (GPIO9)', wiring: 'EN GPIO17 · STP GPIO27 · DIR GPIO22 · addr 0xE0 · 5:1 planetary · end-stop GPIO9 (shared)' },
+      { id: 2, name: 'Joint 3 · Motor 2', gear: 5, limits: true, limitTitle: 'Shared travel limit (GPIO19)', wiring: 'EN GPIO2 · STP GPIO6 · DIR GPIO7 · addr 0xE1 · 5:1 planetary · end-stop GPIO19 (shared)' },
       { id: 3, name: 'Joint 2 · Motor 3 (Pan)', gear: 1, limits: true, limitTitle: 'Shared travel limit (GPIO26)', wiring: 'EN GPIO23 · STP GPIO24 · DIR GPIO25 · addr 0xE2 · direct drive · end-stop GPIO26 (shared)' },
-      { id: 4, name: 'Joint 1 · Motor 4', gear: 1, limits: true, limitTitle: 'Shared travel limit (GPIO19)', wiring: 'EN GPIO16 · STP GPIO20 · DIR GPIO21 · addr 0xE3 · direct drive · end-stop GPIO19 (shared)' },
+      { id: 4, name: 'Joint 1 · Motor 4', gear: 1, wiring: 'EN GPIO16 · STP GPIO20 · DIR GPIO21 · addr 0xE3 · direct drive' },
     ];
 
     const SERVOS = [

@@ -376,21 +376,27 @@ def read_health():
 
 # ---------------------------------------------------------------------------
 # NEMA 17 + MKS SERVO42C stepper control
-#   Motor 1:  EN -> GPIO 17   STP -> GPIO 27   DIR -> GPIO 22
-#   Motor 2:  EN -> GPIO 2    STP -> GPIO 3    DIR -> GPIO 4
+#   Motor 1:  EN -> GPIO 17   STP -> GPIO 27   DIR -> GPIO 22   LIMIT -> GPIO 9
+#   Motor 2:  EN -> GPIO 2    STP -> GPIO 6    DIR -> GPIO 7
 #   Motor 3:  EN -> GPIO 23   STP -> GPIO 24   DIR -> GPIO 25
 #   Motor 4:  EN -> GPIO 16   STP -> GPIO 20   DIR -> GPIO 21
 #   (EN is active-LOW on the SERVO42C)
 #   NOTE: Motor 3 was moved off GPIO 9/10/11 because those are the SPI0 pins
 #   (GPIO10 = MOSI) used to drive the WS2812 emotion rings on the Pi 5.
+#   HARDWARE FAULT: on this Pi 5, GPIO 3, 4 and 5 are physically damaged
+#   (stuck low — confirmed bare-board: driven HIGH, pad stays at 0 V). Motor 2
+#   STP/DIR were moved off GPIO 3/4 onto GPIO 6 (free) and GPIO 7 (SPI CE1, but
+#   the LED ring only uses spidev0.0/CE0 so CE1 is free). EN stays on GPIO 2.
+#   Do NOT use GPIO 3/4/5 for anything until the SoC is replaced.
 # ---------------------------------------------------------------------------
 EN_PIN = 17
 STP_PIN = 27
 DIR_PIN = 22
+M1_LIMIT_PIN = 9
 
 EN2_PIN = 2
-STP2_PIN = 3
-DIR2_PIN = 4
+STP2_PIN = 6   # was GPIO 3 (damaged) — remapped to IO6
+DIR2_PIN = 7   # was GPIO 4 (damaged) — remapped to CE1 (SPI CE1, unused by LED)
 
 EN3_PIN = 23
 STP3_PIN = 24
@@ -409,31 +415,16 @@ MOTOR2_GEAR_RATIO = 5.0
 MOTOR3_GEAR_RATIO = 1.0
 MOTOR4_GEAR_RATIO = 1.0
 
-# Motor 2 dedicated Hall end-stops:
-#   CW  limit -> GPIO 5
-#   CCW limit -> GPIO 9  (moved from GPIO 6 which is stuck LOW, 7 was busy)
-# Sensors are active-LOW: idle = 3.3 V, triggered (at limit) = 0 V.
-# pull_up=True (internal pull-up) → is_active when LOW.
-# Override per sensor via env var if wiring differs:
-#   M2_LIMIT_CW_ACTIVE_LOW=0  or  M2_LIMIT_CCW_ACTIVE_LOW=0
-M2_LIMIT_CW_PIN = 5
-M2_LIMIT_CCW_PIN = 9
-M2_LIMIT_ACTIVE_LOW = True  # active-LOW sensors: is_active when pin = 0 V
-def _env_bool(name, default):
-    v = os.environ.get(name, "").strip().lower()
-    return default if v == "" else v not in ("0", "false", "no", "off")
-M2_LIMIT_CW_ACTIVE_LOW  = _env_bool("M2_LIMIT_CW_ACTIVE_LOW",  M2_LIMIT_ACTIVE_LOW)
-M2_LIMIT_CCW_ACTIVE_LOW = _env_bool("M2_LIMIT_CCW_ACTIVE_LOW", M2_LIMIT_ACTIVE_LOW)
-
-# Motor 3 end-stop limit switches. Both travel-limit switches share a SINGLE
-# GPIO line (GPIO 26): each is wired to 3.3V (the Pi GPIO is 3.3V only — never
+# Motor 1/2/3 end-stop limit switches. Each motor's two travel-limit switches
+# share a SINGLE GPIO line: M1 -> GPIO 9, M2 -> GPIO 19, M3 -> GPIO 26. Each
+# switch is wired to 3.3V (the Pi GPIO is 3.3V only — never
 # 5V), so a pressed switch drives the pin HIGH and an internal pull-down holds
 # it LOW when released. Only one end stop can be reached at a time, so the
 # motor's current travel direction tells us which limit was hit — no need for a
 # separate pin per switch. When the line trips the motor stops immediately and
 # refuses to drive further that way; jogging the opposite direction backs off.
+M2_LIMIT_PIN = 19
 M3_LIMIT_PIN = 26
-M4_LIMIT_PIN = 19
 
 # Servo motors for axis 5 & 6 (DX-227 270-degree servos via hardware PWM).
 # GPIO 12/13 are real hardware PWM pins on the Pi 5 (RP1 pwmchip2). Hardware
@@ -633,15 +624,17 @@ class StepperMotor:
                 )
                 if limit_pin is not None else None
             )
-            # CW limit: gpiozero DigitalInputDevice preserves the RP1 hardware
-            # default pull (SET_PULL_NONE), which works correctly for GPIO 5.
+            # Both CW and CCW use _DirectGPIOInput so the pull resistor is
+            # explicitly applied via SET_PULL_UP/DOWN.  The RP1 hardware default
+            # pull for GPIO 5 (CW) is too strong: even when the A3144 NPN
+            # conducts through a 10kΩ series resistor, the voltage divider keeps
+            # the pin above the logic-HIGH threshold and the trigger is missed.
+            # The weaker software pull (~50kΩ) is overcome by the sensor, giving
+            # correct LOW readings when triggered.
             self._limit_cw = (
-                DigitalInputDevice(limit_pin_cw, pull_up=bool(_cw_al), bounce_time=0.005)
+                _DirectGPIOInput(limit_pin_cw, pull_up=bool(_cw_al))
                 if limit_pin_cw is not None else None
             )
-            # CCW limit: use _DirectGPIOInput so the pull-up is explicitly
-            # applied — gpiozero's SET_PULL_NONE leaves GPIO 9 at its RP1
-            # default (pull-down), causing it to always read 0 when idle.
             self._limit_ccw = (
                 _DirectGPIOInput(limit_pin_ccw, pull_up=bool(_ccw_al))
                 if limit_pin_ccw is not None else None
@@ -976,39 +969,21 @@ class StepperMotor:
 
 
 motors = {
-    1: StepperMotor(EN_PIN, STP_PIN, DIR_PIN, MOTOR1_GEAR_RATIO),
+    1: StepperMotor(
+        EN_PIN, STP_PIN, DIR_PIN, MOTOR1_GEAR_RATIO, limit_pin=M1_LIMIT_PIN,
+    ),
     2: StepperMotor(
         EN2_PIN,
         STP2_PIN,
         DIR2_PIN,
         MOTOR2_GEAR_RATIO,
-        limit_pin_cw=M2_LIMIT_CW_PIN,
-        limit_pin_ccw=M2_LIMIT_CCW_PIN,
-        limit_cw_active_low=M2_LIMIT_CW_ACTIVE_LOW,
-        limit_ccw_active_low=M2_LIMIT_CCW_ACTIVE_LOW,
+        limit_pin=M2_LIMIT_PIN,
     ),
     3: StepperMotor(
         EN3_PIN, STP3_PIN, DIR3_PIN, MOTOR3_GEAR_RATIO, limit_pin=M3_LIMIT_PIN,
     ),
-    4: StepperMotor(
-        EN4_PIN, STP4_PIN, DIR4_PIN, MOTOR4_GEAR_RATIO, limit_pin=M4_LIMIT_PIN,
-    ),
+    4: StepperMotor(EN4_PIN, STP4_PIN, DIR4_PIN, MOTOR4_GEAR_RATIO),
 }
-
-# The Pi 5 RP1 chip leaves many GPIO pins at pull-down by default. gpiozero's
-# lgpio backend calls gpio_claim_input with SET_PULL_NONE (preserve current),
-# so those pins stay pulled-down and read 0 even when idle. Force pull-up on
-# the Motor 2 limit switch pins via the same lgpio handle gpiozero already holds.
-if GPIO_AVAILABLE:
-    try:
-        import lgpio as _lgpio
-        from gpiozero.pins.lgpio import LGPIOFactory
-        _factory = gpiozero.Device.pin_factory
-        if isinstance(_factory, LGPIOFactory):
-            for _pin in [M2_LIMIT_CW_PIN, M2_LIMIT_CCW_PIN]:
-                _lgpio.gpio_claim_input(_factory._handle, _pin, _lgpio.SET_PULL_UP)
-    except Exception as _e:
-        print(f"Warning: could not force pull-up on Motor 2 limit pins: {_e}")
 
 # Standard RC servos for axis 5 & 6 using true hardware PWM (rpi-hardware-pwm).
 servos = {}            # sid -> HardwarePWM instance
@@ -2070,7 +2045,7 @@ camera = EmotionCamera()
 # ---------------------------------------------------------------------------
 FACE_TRACK_SERVO_ID = int(os.environ.get("FACE_TRACK_SERVO_ID", "5"))
 FACE_TRACK_MOTOR_IDS = [
-    int(x.strip()) for x in os.environ.get("FACE_TRACK_MOTOR_IDS", "1,2,3,4").split(",")
+    int(x.strip()) for x in os.environ.get("FACE_TRACK_MOTOR_IDS", "1,3,4").split(",")
     if x.strip()
 ]
 # Per-motor mix from pixel error -> virtual command:
@@ -3369,6 +3344,105 @@ def motor_limit_raw(mid):
                 out[name] = {"error": str(e)}
     out["_blocked_dir"] = motor._blocked_dir
     return jsonify(out)
+
+
+def _servo42c_query(addr, cmd, max_bytes=16, deadline_s=0.15):
+    """Send a single [addr, cmd, checksum] frame to a SERVO42C and capture the
+    raw reply (variable length). Returns a dict with hex bytes + parsed fields.
+
+    Used for driver diagnostics: the reply's first byte is the address, the
+    last is the checksum, and the middle bytes are the command payload.
+    """
+    if _serial_conn is None:
+        return {"available": False, "error": _serial_error}
+    cmd = int(cmd) & 0xFF
+    addr = int(addr) & 0xFF
+    packet = bytes([addr, cmd, (addr + cmd) & 0xFF])
+    with _serial_lock:
+        try:
+            _serial_conn.reset_input_buffer()
+            _serial_conn.write(packet)
+            resp = bytearray()
+            deadline = time.time() + deadline_s
+            while len(resp) < max_bytes and time.time() < deadline:
+                chunk = _serial_conn.read(max_bytes - len(resp))
+                if chunk:
+                    resp.extend(chunk)
+                elif resp:
+                    break  # got a frame then a gap -> reply complete
+            resp = bytes(resp)
+        except Exception as exc:
+            return {"available": True, "error": str(exc)}
+
+    out = {
+        "available": True,
+        "cmd": f"0x{cmd:02x}",
+        "addr": f"0x{addr:02x}",
+        "sent": packet.hex(),
+        "reply_hex": resp.hex(),
+        "reply_len": len(resp),
+    }
+    if not resp:
+        out["error"] = "no reply (driver not answering on this address)"
+        return out
+    out["addr_ok"] = (resp[0] == addr)
+    if len(resp) >= 2:
+        crc_ok = (sum(resp[:-1]) & 0xFF) == resp[-1]
+        out["crc_ok"] = crc_ok
+        payload = resp[1:-1]
+        out["payload_hex"] = payload.hex()
+        # Common single-byte status replies (En state, stall flag, etc.).
+        if len(payload) == 1:
+            out["payload_u8"] = payload[0]
+        # Common int32 replies (pulses received, shaft angle error).
+        elif len(payload) == 4:
+            out["payload_i32"] = int.from_bytes(payload, "big", signed=True)
+        elif len(payload) == 2:
+            out["payload_i16"] = int.from_bytes(payload, "big", signed=True)
+    return out
+
+
+# SERVO42C status read commands (MKS UART protocol).
+_SERVO42C_DIAG_CMDS = [
+    ("encoder_carry_value", 0x30),  # full encoder frame (addr+carry+val+crc)
+    ("pulses_received",     0x33),  # int32: pulses the driver has received
+    ("shaft_angle_error",   0x39),  # closed-loop position error
+    ("en_pin_status",       0x3A),  # 1 = enabled/energized
+    ("stall_protect_state", 0x3D),  # 1 = stall protection tripped
+]
+
+
+@app.route("/motor/<int:mid>/servo_diag")
+def motor_servo_diag(mid):
+    """Poll the SERVO42C driver's status registers over UART.
+
+    Diagnoses whether the driver is following step pulses or holding/correcting
+    position on its own (closed-loop). Compare `pulses_received` before/after a
+    jog, and watch `shaft_angle_error` / `en_pin_status` while merely enabled.
+    """
+    enc = get_encoder(mid)
+    if enc is None:
+        return jsonify({"error": "unknown motor"}), 404
+    addr = enc.addr
+    out = {"motor": mid, "addr": f"0x{addr:02x}", "regs": {}}
+    for name, cmd in _SERVO42C_DIAG_CMDS:
+        out["regs"][name] = _servo42c_query(addr, cmd)
+    return jsonify(out)
+
+
+@app.route("/motor/<int:mid>/servo_query")
+def motor_servo_query(mid):
+    """Send one arbitrary command byte to a motor's SERVO42C and return the raw
+    reply. Usage: /motor/2/servo_query?cmd=0x3a (cmd accepts hex or decimal)."""
+    enc = get_encoder(mid)
+    if enc is None:
+        return jsonify({"error": "unknown motor"}), 404
+    raw = request.args.get("cmd", "0x30")
+    try:
+        cmd = int(raw, 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": f"bad cmd '{raw}' (use hex like 0x3a or decimal)"}), 400
+    return jsonify(_servo42c_query(enc.addr, cmd))
 
 
 @app.route("/motor/<int:mid>/status")

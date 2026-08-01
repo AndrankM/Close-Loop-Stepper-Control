@@ -109,10 +109,10 @@ All in `app.py` near the top:
 
 | Motor | EN | STP | DIR | Gear | End-stop |
 |---|---|---|---|---|---|
-| 1 | GPIO 17 | GPIO 27 | GPIO 22 | 5:1 | — |
-| 2 | GPIO 2 | GPIO 3 | GPIO 4 | 5:1 | GPIO 5 (CW), GPIO 6 (CCW), active-low hall |
+| 1 | GPIO 17 | GPIO 27 | GPIO 22 | 5:1 | GPIO 9 (shared, active-high) |
+| 2 | GPIO 2 | GPIO 6 | GPIO 7 | 5:1 | GPIO 19 (shared, active-high) |
 | 3 | GPIO 23 | GPIO 24 | GPIO 25 | 1:1 | GPIO 26 (shared, active-high) |
-| 4 | GPIO 16 | GPIO 20 | GPIO 21 | 1:1 | GPIO 19 (shared, active-high) |
+| 4 | GPIO 16 | GPIO 20 | GPIO 21 | 1:1 | — |
 
 Axis 5 servo → GPIO 12 (HW PWM ch 0). Axis 6 servo → GPIO 13 (HW PWM ch 1).  
 SERVO42C UART bus: Pi TXD GPIO 14 → all Rx; all Tx → Pi RXD GPIO 15. Baud 9600. Addresses 0xE0–0xE3.  

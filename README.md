@@ -27,9 +27,8 @@ shaft.
 - **Trapezoidal acceleration / deceleration** — the live speed eases toward the
   target and back down to zero at a configurable acceleration (steps/s²), giving a
   symmetric trapezoidal velocity profile with smooth starts *and* stops.
-- **End-stop / hall limit switches (Motors 2, 3 &amp; 4)** — motor 2 uses dedicated
-  hall inputs per direction (**CW GPIO 5**, **CCW GPIO 6**, active-low), while
-  motors 3 and 4 each use two hardware limit switches on a single shared GPIO line.
+- **End-stop limit switches** — motors 1, 2, and 3 each use two mechanical limit
+  switches on a single shared GPIO line; motor 4 has no limit-switch input.
   Limits stop motion immediately in the blocked direction while still allowing jog
   away from the stop. A live end-stop indicator and an `END STOP` state appear on
   the motor card.
@@ -81,37 +80,42 @@ shaft.
 | Motor | Drive            | EN      | STP     | DIR     |
 | ----- | ---------------- | ------- | ------- | ------- |
 | 1     | 5:1 planetary    | GPIO 17 | GPIO 27 | GPIO 22 |
-| 2     | 5:1 planetary    | GPIO 2  | GPIO 3  | GPIO 4  |
+| 2     | 5:1 planetary    | GPIO 2  | GPIO 6  | GPIO 7  |
 | 3     | Direct (1:1)     | GPIO 23 | GPIO 24 | GPIO 25 |
 | 4     | Direct (1:1)     | GPIO 16 | GPIO 20 | GPIO 21 |
 
 `EN` is active-LOW on the SERVO42C; each motor's `GND` ties to the Pi `GND`.
 
-### End-stop / hall limit switches (Motors 2, 3 &amp; 4)
+### Mechanical limit switches
 
-Motor 2 uses two dedicated **hall-effect** limit inputs, one per direction:
+Motor 1 uses two travel-limit switches sharing a **single GPIO line** on
+**GPIO 9**. Each switch is wired to **3.3 V** so a pressed switch drives the pin
+HIGH; an internal pull-down holds it LOW when released.
 
-| Motor | Sensor type | Direction | GPIO   | Idle | Triggered |
-| ----- | ----------- | --------- | ------ | ---- | --------- |
-| 2     | Hall        | CW        | GPIO 5 | HIGH | LOW (0 V) |
-| 2     | Hall        | CCW       | GPIO 6 | HIGH | LOW (0 V) |
+| Motor | Shared travel limit | Idle | Pressed |
+| ----- | ------------------- | ---- | ------- |
+| 1     | GPIO 9              | LOW  | HIGH    |
 
-These are configured as active-low in software (`pull_up=True`), matching hall
-outputs that pull the pin to 0 V at limit.
+Motor 2 uses two travel-limit switches sharing a **single GPIO line** on
+**GPIO 19**. Each switch is wired to **3.3 V** so a pressed switch drives the pin
+HIGH; an internal pull-down holds it LOW when released.
 
-Motors 3 and 4 each keep the shared-line end-stop layout:
+| Motor | Shared travel limit | Idle | Pressed |
+| ----- | ------------------- | ---- | ------- |
+| 2     | GPIO 19             | LOW  | HIGH    |
 
-Motors 3 and 4 each have two travel-limit switches sharing a **single GPIO line**
-(GPIO 26 for motor 3, GPIO 19 for motor 4). Each switch is wired to **3.3 V** (the
+Motor 3 keeps the shared-line end-stop layout:
+
+Motor 3 has two travel-limit switches sharing a **single GPIO line**
+(GPIO 26). Each switch is wired to **3.3 V** (the
 Pi GPIO is 3.3 V tolerant only — **never wire a GPIO to 5 V**) so a pressed switch
 drives the pin HIGH; an internal pull-down holds it LOW when released.
 
 | Motor | Shared travel limit | Idle | Pressed |
 | ----- | ------------------- | ---- | ------- |
 | 3     | GPIO 26             | LOW  | HIGH    |
-| 4     | GPIO 19             | LOW  | HIGH    |
 
-For motors 3/4, only one end stop can be reached at a time, so the motor's
+For these shared-line limit inputs, only one end stop can be reached at a time, so the motor's
 **current travel direction** identifies which limit was hit — no separate pin per
 switch is needed. When the line trips, the motor stops immediately and that
 direction stays blocked until the switch releases; jogging the opposite direction

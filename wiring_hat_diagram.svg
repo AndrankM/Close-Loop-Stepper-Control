@@ -1,0 +1,280 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="820" font-family="Segoe UI, Arial, sans-serif">
+<rect width="1060" height="820" fill="#0f1116"/>
+<text x="530.0" y="38" fill="#fff" font-size="25" font-weight="700" text-anchor="middle">GPIO Terminal HAT — 4-Axis Arm Wiring</text>
+<text x="530.0" y="62" fill="#9aa0a6" font-size="13.5" text-anchor="middle">HAT silk name (IOxx = BCM GPIOxx) · function · BCM#</text>
+<text x="530.0" y="84" fill="#ffb74d" font-size="14" font-weight="700" text-anchor="middle">M1 limit → MISO/IO9 · M2 remapped → EN=SDA · STP=IO6 · DIR=CE1 · limit=IO19</text>
+<defs><pattern id="hatch" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="#ff2d2d"/><line x1="0" y1="0" x2="0" y2="6" stroke="#7a0000" stroke-width="3"/></pattern></defs>
+<rect x="74" y="170" width="880" height="38" rx="6" fill="#1f6b2e" stroke="#0c3d18" stroke-width="2"/>
+<text x="40" y="194.0" fill="#8fe3a3" font-size="17" font-weight="800">TB1</text>
+<text x="100" y="168" fill="#ff8a80" font-size="13" font-weight="800" text-anchor="middle">3V3</text>
+<circle cx="100" cy="189.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="96" y1="189.0" x2="104" y2="189.0" stroke="#555" stroke-width="2"/>
+<line x1="100" y1="185.0" x2="100" y2="193.0" stroke="#555" stroke-width="2"/>
+<text x="192" y="168" fill="#9aa0a6" font-size="13" font-weight="800" text-anchor="middle">GND</text>
+<circle cx="192" cy="189.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="188" y1="189.0" x2="196" y2="189.0" stroke="#555" stroke-width="2"/>
+<line x1="192" y1="185.0" x2="192" y2="193.0" stroke="#555" stroke-width="2"/>
+<text x="284" y="168" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">IO17</text>
+<circle cx="284" cy="189.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="280" y1="189.0" x2="288" y2="189.0" stroke="#555" stroke-width="2"/>
+<line x1="284" y1="185.0" x2="284" y2="193.0" stroke="#555" stroke-width="2"/>
+<rect x="242.0" y="214" width="84" height="40" rx="6" fill="#2e86de" stroke="#00000033" stroke-width="1.5"/>
+<text x="284" y="231" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">M1 EN</text>
+<text x="284" y="246" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO17</text>
+<text x="376" y="168" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">IO18</text>
+<circle cx="376" cy="189.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="372" y1="189.0" x2="380" y2="189.0" stroke="#555" stroke-width="2"/>
+<line x1="376" y1="185.0" x2="376" y2="193.0" stroke="#555" stroke-width="2"/>
+<rect x="334.0" y="214" width="84" height="40" rx="6" fill="#9aa0a6" stroke="#00000033" stroke-width="1.5"/>
+<text x="376" y="231" fill="#222" font-size="11" font-weight="700" text-anchor="middle">(audio)</text>
+<text x="376" y="246" fill="#222" font-size="10" text-anchor="middle" opacity="0.85">GPIO18</text>
+<text x="468" y="168" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">MOSI</text>
+<circle cx="468" cy="189.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="464" y1="189.0" x2="472" y2="189.0" stroke="#555" stroke-width="2"/>
+<line x1="468" y1="185.0" x2="468" y2="193.0" stroke="#555" stroke-width="2"/>
+<rect x="426.0" y="214" width="84" height="40" rx="6" fill="#00b8b8" stroke="#00000033" stroke-width="1.5"/>
+<text x="468" y="231" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">WS2812 DATA</text>
+<text x="468" y="246" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO10</text>
+<text x="560" y="168" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">MISO</text>
+<circle cx="560" cy="189.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="556" y1="189.0" x2="564" y2="189.0" stroke="#555" stroke-width="2"/>
+<line x1="560" y1="185.0" x2="560" y2="193.0" stroke="#555" stroke-width="2"/>
+<rect x="518.0" y="214" width="84" height="40" rx="6" fill="#f39c12" stroke="#00000033" stroke-width="1.5"/>
+<text x="560" y="231" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">M1 limit</text>
+<text x="560" y="246" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO9</text>
+<text x="652" y="168" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">SCLK</text>
+<circle cx="652" cy="189.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="648" y1="189.0" x2="656" y2="189.0" stroke="#555" stroke-width="2"/>
+<line x1="652" y1="185.0" x2="652" y2="193.0" stroke="#555" stroke-width="2"/>
+<rect x="610.0" y="214" width="84" height="40" rx="6" fill="#9aa0a6" stroke="#00000033" stroke-width="1.5"/>
+<text x="652" y="231" fill="#222" font-size="11" font-weight="700" text-anchor="middle">(SPI)</text>
+<text x="652" y="246" fill="#222" font-size="10" text-anchor="middle" opacity="0.85">GPIO11</text>
+<text x="744" y="168" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">CE0</text>
+<circle cx="744" cy="189.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="740" y1="189.0" x2="748" y2="189.0" stroke="#555" stroke-width="2"/>
+<line x1="744" y1="185.0" x2="744" y2="193.0" stroke="#555" stroke-width="2"/>
+<rect x="702.0" y="214" width="84" height="40" rx="6" fill="#9aa0a6" stroke="#00000033" stroke-width="1.5"/>
+<text x="744" y="231" fill="#222" font-size="11" font-weight="700" text-anchor="middle">(SPI/LED)</text>
+<text x="744" y="246" fill="#222" font-size="10" text-anchor="middle" opacity="0.85">GPIO8</text>
+<text x="836" y="168" fill="#ffd9a8" font-size="13" font-weight="800" text-anchor="middle">CE1</text>
+<circle cx="836" cy="189.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="832" y1="189.0" x2="840" y2="189.0" stroke="#555" stroke-width="2"/>
+<line x1="836" y1="185.0" x2="836" y2="193.0" stroke="#555" stroke-width="2"/>
+<rect x="794.0" y="214" width="84" height="40" rx="6" fill="#e67e22" stroke="#00000033" stroke-width="1.5"/>
+<text x="836" y="231" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">M2 DIR</text>
+<text x="836" y="246" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO7</text>
+<text x="928" y="168" fill="#9aa0a6" font-size="13" font-weight="800" text-anchor="middle">GND</text>
+<circle cx="928" cy="189.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="924" y1="189.0" x2="932" y2="189.0" stroke="#555" stroke-width="2"/>
+<line x1="928" y1="185.0" x2="928" y2="193.0" stroke="#555" stroke-width="2"/>
+<rect x="74" y="320" width="880" height="38" rx="6" fill="#1f6b2e" stroke="#0c3d18" stroke-width="2"/>
+<text x="40" y="344.0" fill="#8fe3a3" font-size="17" font-weight="800">TB2</text>
+<text x="100" y="318" fill="#ff8a80" font-size="13" font-weight="800" text-anchor="middle">3V3</text>
+<circle cx="100" cy="339.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="96" y1="339.0" x2="104" y2="339.0" stroke="#555" stroke-width="2"/>
+<line x1="100" y1="335.0" x2="100" y2="343.0" stroke="#555" stroke-width="2"/>
+<text x="192" y="318" fill="#9aa0a6" font-size="13" font-weight="800" text-anchor="middle">GND</text>
+<circle cx="192" cy="339.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="188" y1="339.0" x2="196" y2="339.0" stroke="#555" stroke-width="2"/>
+<line x1="192" y1="335.0" x2="192" y2="343.0" stroke="#555" stroke-width="2"/>
+<text x="284" y="318" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">TXD</text>
+<circle cx="284" cy="339.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="280" y1="339.0" x2="288" y2="339.0" stroke="#555" stroke-width="2"/>
+<line x1="284" y1="335.0" x2="284" y2="343.0" stroke="#555" stroke-width="2"/>
+<rect x="242.0" y="364" width="84" height="40" rx="6" fill="#16a085" stroke="#00000033" stroke-width="1.5"/>
+<text x="284" y="381" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">UART TX→drv</text>
+<text x="284" y="396" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO14</text>
+<text x="376" y="318" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">RXD</text>
+<circle cx="376" cy="339.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="372" y1="339.0" x2="380" y2="339.0" stroke="#555" stroke-width="2"/>
+<line x1="376" y1="335.0" x2="376" y2="343.0" stroke="#555" stroke-width="2"/>
+<rect x="334.0" y="364" width="84" height="40" rx="6" fill="#16a085" stroke="#00000033" stroke-width="1.5"/>
+<text x="376" y="381" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">UART RX←drv</text>
+<text x="376" y="396" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO15</text>
+<text x="468" y="318" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">IO24</text>
+<circle cx="468" cy="339.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="464" y1="339.0" x2="472" y2="339.0" stroke="#555" stroke-width="2"/>
+<line x1="468" y1="335.0" x2="468" y2="343.0" stroke="#555" stroke-width="2"/>
+<rect x="426.0" y="364" width="84" height="40" rx="6" fill="#27ae60" stroke="#00000033" stroke-width="1.5"/>
+<text x="468" y="381" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">M3 STP</text>
+<text x="468" y="396" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO24</text>
+<text x="560" y="318" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">IO25</text>
+<circle cx="560" cy="339.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="556" y1="339.0" x2="564" y2="339.0" stroke="#555" stroke-width="2"/>
+<line x1="560" y1="335.0" x2="560" y2="343.0" stroke="#555" stroke-width="2"/>
+<rect x="518.0" y="364" width="84" height="40" rx="6" fill="#27ae60" stroke="#00000033" stroke-width="1.5"/>
+<text x="560" y="381" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">M3 DIR</text>
+<text x="560" y="396" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO25</text>
+<text x="652" y="318" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">IO5</text>
+<circle cx="652" cy="339.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="648" y1="339.0" x2="656" y2="339.0" stroke="#555" stroke-width="2"/>
+<line x1="652" y1="335.0" x2="652" y2="343.0" stroke="#555" stroke-width="2"/>
+<rect x="610.0" y="364" width="84" height="40" rx="6" fill="#ff2d2d" stroke="#ff2d2d" stroke-width="1.5"/>
+<text x="652" y="381" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">✗ DEAD</text>
+<text x="652" y="396" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO5</text>
+<text x="744" y="318" fill="#ffd9a8" font-size="13" font-weight="800" text-anchor="middle">IO6</text>
+<circle cx="744" cy="339.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="740" y1="339.0" x2="748" y2="339.0" stroke="#555" stroke-width="2"/>
+<line x1="744" y1="335.0" x2="744" y2="343.0" stroke="#555" stroke-width="2"/>
+<rect x="702.0" y="364" width="84" height="40" rx="6" fill="#e67e22" stroke="#00000033" stroke-width="1.5"/>
+<text x="744" y="381" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">M2 STP</text>
+<text x="744" y="396" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO6</text>
+<text x="836" y="318" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">IO16</text>
+<circle cx="836" cy="339.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="832" y1="339.0" x2="840" y2="339.0" stroke="#555" stroke-width="2"/>
+<line x1="836" y1="335.0" x2="836" y2="343.0" stroke="#555" stroke-width="2"/>
+<rect x="794.0" y="364" width="84" height="40" rx="6" fill="#8e44ad" stroke="#00000033" stroke-width="1.5"/>
+<text x="836" y="381" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">M4 EN</text>
+<text x="836" y="396" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO16</text>
+<text x="928" y="318" fill="#9aa0a6" font-size="13" font-weight="800" text-anchor="middle">GND</text>
+<circle cx="928" cy="339.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="924" y1="339.0" x2="932" y2="339.0" stroke="#555" stroke-width="2"/>
+<line x1="928" y1="335.0" x2="928" y2="343.0" stroke="#555" stroke-width="2"/>
+<rect x="74" y="470" width="880" height="38" rx="6" fill="#1f6b2e" stroke="#0c3d18" stroke-width="2"/>
+<text x="40" y="494.0" fill="#8fe3a3" font-size="17" font-weight="800">TB3</text>
+<text x="100" y="468" fill="#ff8a80" font-size="13" font-weight="800" text-anchor="middle">5V</text>
+<circle cx="100" cy="489.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="96" y1="489.0" x2="104" y2="489.0" stroke="#555" stroke-width="2"/>
+<line x1="100" y1="485.0" x2="100" y2="493.0" stroke="#555" stroke-width="2"/>
+<text x="192" y="468" fill="#9aa0a6" font-size="13" font-weight="800" text-anchor="middle">GND</text>
+<circle cx="192" cy="489.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="188" y1="489.0" x2="196" y2="489.0" stroke="#555" stroke-width="2"/>
+<line x1="192" y1="485.0" x2="192" y2="493.0" stroke="#555" stroke-width="2"/>
+<text x="284" y="468" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">IO23</text>
+<circle cx="284" cy="489.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="280" y1="489.0" x2="288" y2="489.0" stroke="#555" stroke-width="2"/>
+<line x1="284" y1="485.0" x2="284" y2="493.0" stroke="#555" stroke-width="2"/>
+<rect x="242.0" y="514" width="84" height="40" rx="6" fill="#27ae60" stroke="#00000033" stroke-width="1.5"/>
+<text x="284" y="531" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">M3 EN</text>
+<text x="284" y="546" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO23</text>
+<text x="376" y="468" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">IO22</text>
+<circle cx="376" cy="489.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="372" y1="489.0" x2="380" y2="489.0" stroke="#555" stroke-width="2"/>
+<line x1="376" y1="485.0" x2="376" y2="493.0" stroke="#555" stroke-width="2"/>
+<rect x="334.0" y="514" width="84" height="40" rx="6" fill="#2e86de" stroke="#00000033" stroke-width="1.5"/>
+<text x="376" y="531" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">M1 DIR</text>
+<text x="376" y="546" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO22</text>
+<text x="468" y="468" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">IDSD</text>
+<circle cx="468" cy="489.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="464" y1="489.0" x2="472" y2="489.0" stroke="#555" stroke-width="2"/>
+<line x1="468" y1="485.0" x2="468" y2="493.0" stroke="#555" stroke-width="2"/>
+<rect x="426.0" y="514" width="84" height="40" rx="6" fill="#9aa0a6" stroke="#00000033" stroke-width="1.5"/>
+<text x="468" y="531" fill="#222" font-size="11" font-weight="700" text-anchor="middle">(EEPROM)</text>
+<text x="468" y="546" fill="#222" font-size="10" text-anchor="middle" opacity="0.85">GPIO0</text>
+<text x="560" y="468" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">IDSC</text>
+<circle cx="560" cy="489.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="556" y1="489.0" x2="564" y2="489.0" stroke="#555" stroke-width="2"/>
+<line x1="560" y1="485.0" x2="560" y2="493.0" stroke="#555" stroke-width="2"/>
+<rect x="518.0" y="514" width="84" height="40" rx="6" fill="#9aa0a6" stroke="#00000033" stroke-width="1.5"/>
+<text x="560" y="531" fill="#222" font-size="11" font-weight="700" text-anchor="middle">(EEPROM)</text>
+<text x="560" y="546" fill="#222" font-size="10" text-anchor="middle" opacity="0.85">GPIO1</text>
+<text x="652" y="468" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">IO12</text>
+<circle cx="652" cy="489.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="648" y1="489.0" x2="656" y2="489.0" stroke="#555" stroke-width="2"/>
+<line x1="652" y1="485.0" x2="652" y2="493.0" stroke="#555" stroke-width="2"/>
+<rect x="610.0" y="514" width="84" height="40" rx="6" fill="#e84393" stroke="#00000033" stroke-width="1.5"/>
+<text x="652" y="531" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">Servo Ax5</text>
+<text x="652" y="546" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO12</text>
+<text x="744" y="468" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">IO20</text>
+<circle cx="744" cy="489.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="740" y1="489.0" x2="748" y2="489.0" stroke="#555" stroke-width="2"/>
+<line x1="744" y1="485.0" x2="744" y2="493.0" stroke="#555" stroke-width="2"/>
+<rect x="702.0" y="514" width="84" height="40" rx="6" fill="#8e44ad" stroke="#00000033" stroke-width="1.5"/>
+<text x="744" y="531" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">M4 STP</text>
+<text x="744" y="546" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO20</text>
+<text x="836" y="468" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">IO19</text>
+<circle cx="836" cy="489.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="832" y1="489.0" x2="840" y2="489.0" stroke="#555" stroke-width="2"/>
+<line x1="836" y1="485.0" x2="836" y2="493.0" stroke="#555" stroke-width="2"/>
+<rect x="794.0" y="514" width="84" height="40" rx="6" fill="#f39c12" stroke="#00000033" stroke-width="1.5"/>
+<text x="836" y="531" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">M2 limit</text>
+<text x="836" y="546" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO19</text>
+<text x="928" y="468" fill="#9aa0a6" font-size="13" font-weight="800" text-anchor="middle">GND</text>
+<circle cx="928" cy="489.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="924" y1="489.0" x2="932" y2="489.0" stroke="#555" stroke-width="2"/>
+<line x1="928" y1="485.0" x2="928" y2="493.0" stroke="#555" stroke-width="2"/>
+<rect x="74" y="620" width="880" height="38" rx="6" fill="#1f6b2e" stroke="#0c3d18" stroke-width="2"/>
+<text x="40" y="644.0" fill="#8fe3a3" font-size="17" font-weight="800">TB4</text>
+<text x="100" y="618" fill="#ff8a80" font-size="13" font-weight="800" text-anchor="middle">5V</text>
+<circle cx="100" cy="639.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="96" y1="639.0" x2="104" y2="639.0" stroke="#555" stroke-width="2"/>
+<line x1="100" y1="635.0" x2="100" y2="643.0" stroke="#555" stroke-width="2"/>
+<text x="192" y="618" fill="#9aa0a6" font-size="13" font-weight="800" text-anchor="middle">GND</text>
+<circle cx="192" cy="639.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="188" y1="639.0" x2="196" y2="639.0" stroke="#555" stroke-width="2"/>
+<line x1="192" y1="635.0" x2="192" y2="643.0" stroke="#555" stroke-width="2"/>
+<text x="284" y="618" fill="#ffd9a8" font-size="13" font-weight="800" text-anchor="middle">SDA</text>
+<circle cx="284" cy="639.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="280" y1="639.0" x2="288" y2="639.0" stroke="#555" stroke-width="2"/>
+<line x1="284" y1="635.0" x2="284" y2="643.0" stroke="#555" stroke-width="2"/>
+<rect x="242.0" y="664" width="84" height="40" rx="6" fill="#e67e22" stroke="#00000033" stroke-width="1.5"/>
+<text x="284" y="681" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">M2 EN</text>
+<text x="284" y="696" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO2</text>
+<text x="376" y="618" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">SCL</text>
+<circle cx="376" cy="639.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="372" y1="639.0" x2="380" y2="639.0" stroke="#555" stroke-width="2"/>
+<line x1="376" y1="635.0" x2="376" y2="643.0" stroke="#555" stroke-width="2"/>
+<rect x="334.0" y="664" width="84" height="40" rx="6" fill="#ff2d2d" stroke="#ff2d2d" stroke-width="1.5"/>
+<text x="376" y="681" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">✗ DEAD</text>
+<text x="376" y="696" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO3</text>
+<text x="468" y="618" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">IO4</text>
+<circle cx="468" cy="639.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="464" y1="639.0" x2="472" y2="639.0" stroke="#555" stroke-width="2"/>
+<line x1="468" y1="635.0" x2="468" y2="643.0" stroke="#555" stroke-width="2"/>
+<rect x="426.0" y="664" width="84" height="40" rx="6" fill="#ff2d2d" stroke="#ff2d2d" stroke-width="1.5"/>
+<text x="468" y="681" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">✗ DEAD</text>
+<text x="468" y="696" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO4</text>
+<text x="560" y="618" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">IO27</text>
+<circle cx="560" cy="639.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="556" y1="639.0" x2="564" y2="639.0" stroke="#555" stroke-width="2"/>
+<line x1="560" y1="635.0" x2="560" y2="643.0" stroke="#555" stroke-width="2"/>
+<rect x="518.0" y="664" width="84" height="40" rx="6" fill="#2e86de" stroke="#00000033" stroke-width="1.5"/>
+<text x="560" y="681" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">M1 STP</text>
+<text x="560" y="696" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO27</text>
+<text x="652" y="618" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">IO21</text>
+<circle cx="652" cy="639.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="648" y1="639.0" x2="656" y2="639.0" stroke="#555" stroke-width="2"/>
+<line x1="652" y1="635.0" x2="652" y2="643.0" stroke="#555" stroke-width="2"/>
+<rect x="610.0" y="664" width="84" height="40" rx="6" fill="#8e44ad" stroke="#00000033" stroke-width="1.5"/>
+<text x="652" y="681" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">M4 DIR</text>
+<text x="652" y="696" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO21</text>
+<text x="744" y="618" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">IO13</text>
+<circle cx="744" cy="639.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="740" y1="639.0" x2="748" y2="639.0" stroke="#555" stroke-width="2"/>
+<line x1="744" y1="635.0" x2="744" y2="643.0" stroke="#555" stroke-width="2"/>
+<rect x="702.0" y="664" width="84" height="40" rx="6" fill="#e84393" stroke="#00000033" stroke-width="1.5"/>
+<text x="744" y="681" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">Servo Ax6</text>
+<text x="744" y="696" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO13</text>
+<text x="836" y="618" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">IO26</text>
+<circle cx="836" cy="639.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="832" y1="639.0" x2="840" y2="639.0" stroke="#555" stroke-width="2"/>
+<line x1="836" y1="635.0" x2="836" y2="643.0" stroke="#555" stroke-width="2"/>
+<rect x="794.0" y="664" width="84" height="40" rx="6" fill="#f39c12" stroke="#00000033" stroke-width="1.5"/>
+<text x="836" y="681" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">M3 limit</text>
+<text x="836" y="696" fill="#fff" font-size="10" text-anchor="middle" opacity="0.85">GPIO26</text>
+<text x="928" y="618" fill="#9aa0a6" font-size="13" font-weight="800" text-anchor="middle">GND</text>
+<circle cx="928" cy="639.0" r="8.5" fill="#cfd2d6" stroke="#0c3d18" stroke-width="2"/>
+<line x1="924" y1="639.0" x2="932" y2="639.0" stroke="#555" stroke-width="2"/>
+<line x1="928" y1="635.0" x2="928" y2="643.0" stroke="#555" stroke-width="2"/>
+<text x="40" y="798" fill="#fff" font-size="13" font-weight="700">Legend</text>
+<rect x="120" y="783" width="16" height="16" rx="3" fill="#2e86de" stroke="#666"/>
+<text x="142" y="796" fill="#dfe2e6" font-size="12">M1 5:1</text>
+<rect x="205.2" y="783" width="16" height="16" rx="3" fill="#e67e22" stroke="#666"/>
+<text x="227.2" y="796" fill="#dfe2e6" font-size="12">M2 5:1</text>
+<rect x="290.4" y="783" width="16" height="16" rx="3" fill="#27ae60" stroke="#666"/>
+<text x="312.4" y="796" fill="#dfe2e6" font-size="12">M3 1:1</text>
+<rect x="375.59999999999997" y="783" width="16" height="16" rx="3" fill="#8e44ad" stroke="#666"/>
+<text x="397.59999999999997" y="796" fill="#dfe2e6" font-size="12">M4 1:1</text>
+<rect x="460.79999999999995" y="783" width="16" height="16" rx="3" fill="#16a085" stroke="#666"/>
+<text x="482.79999999999995" y="796" fill="#dfe2e6" font-size="12">UART</text>
+<rect x="531.5999999999999" y="783" width="16" height="16" rx="3" fill="#f39c12" stroke="#666"/>
+<text x="553.5999999999999" y="796" fill="#dfe2e6" font-size="12">Limit</text>
+<rect x="609.5999999999999" y="783" width="16" height="16" rx="3" fill="#e84393" stroke="#666"/>
+<text x="631.5999999999999" y="796" fill="#dfe2e6" font-size="12">Servo</text>
+<rect x="687.5999999999999" y="783" width="16" height="16" rx="3" fill="#00b8b8" stroke="#666"/>
+<text x="709.5999999999999" y="796" fill="#dfe2e6" font-size="12">LED</text>
+<rect x="751.1999999999999" y="783" width="16" height="16" rx="3" fill="#9aa0a6" stroke="#666"/>
+<text x="773.1999999999999" y="796" fill="#dfe2e6" font-size="12">Dead/SPI</text>
+<rect x="850.8" y="783" width="16" height="16" rx="3" fill="url(#hatch)" stroke="#666"/>
+<text x="872.8" y="796" fill="#dfe2e6" font-size="12">Fault</text>
+</svg>
