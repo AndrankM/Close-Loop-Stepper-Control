@@ -1457,6 +1457,11 @@
           <label>State</label>
           <span class="servo-angle" id="servo-${i}-val">OPEN · ${gripperOpenAngle}°</span>
         </div>
+        <div class="servo-slider" style="margin-top:0.55rem;">
+          <label for="servo-${i}">Angle</label>
+          <input type="range" id="servo-${i}" min="${SERVO_MIN}" max="${SERVO_MAX}" value="${gripperOpenAngle}" step="1"
+                 oninput="setServoAngle(${i}, this.value)">
+        </div>
         <div class="servo-actions">
           <button id="servo-${i}-gripper" class="servo-btn on" onclick="toggleGripper(${i})">Gripper: OPEN (tap to CLOSE)</button>
           <button id="servo-${i}-power" class="servo-btn on" onclick="toggleServoPower(${i})">Power: ON</button>
@@ -1530,6 +1535,11 @@
       }
       if (slider) slider.disabled = !enabled;
       if (delaySlider) delaySlider.disabled = !enabled;
+      // Keep the slider knob in sync with the real angle, unless the user is
+      // actively dragging it (avoid yanking the thumb out from under them).
+      if (slider && Number.isFinite(angle) && document.activeElement !== slider) {
+        slider.value = angle;
+      }
       const val = document.getElementById(`servo-${sid}-val`);
       if (val && Number.isFinite(angle)) {
         if (isGripperServo(sid)) {
