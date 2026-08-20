@@ -21,12 +21,12 @@ $target = "$PiUser@$PiHost"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 Write-Host "==> Uploading files to $target ..." -ForegroundColor Cyan
-scp "$here\app.py" "$here\templates\index.html" "${target}:/tmp/"
+scp "$here\app.py" "$here\templates\index.html" "$here\templates\emotion.html" "${target}:/tmp/"
 
 Write-Host "==> Moving files into place and restarting service ..." -ForegroundColor Cyan
 # -t allocates a TTY so sudo can prompt for its password.
 # Single-line command avoids CRLF issues from PowerShell here-strings.
-$remote = "mv /tmp/app.py $RemoteDir/app.py && mv /tmp/index.html $RemoteDir/templates/index.html && sudo systemctl restart led_app && sleep 3 && systemctl is-active led_app && curl -s http://127.0.0.1:5000/motor/status; echo"
+$remote = "mv /tmp/app.py $RemoteDir/app.py && mv /tmp/index.html $RemoteDir/templates/index.html && mv /tmp/emotion.html $RemoteDir/templates/emotion.html && sudo systemctl restart led_app && sleep 3 && systemctl is-active led_app && curl -s http://127.0.0.1:5000/motor/status; echo"
 ssh -t -o StrictHostKeyChecking=no $target $remote
 
 Write-Host "==> Done. UI: http://${PiHost}:5000" -ForegroundColor Green

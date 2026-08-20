@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-time bootstrap for a fresh Raspberry Pi OS install.
-# Sets up the led_app directory, Python dependencies, systemd service, and UART
-# for the SERVO42C bus.
+# Sets up the led_app directory, Python dependencies, systemd service, UART for
+# the SERVO42C bus, and SPI0 for the WS2812 emotion-ring LEDs.
 set -e
 
 USER_NAME="$(whoami)"
@@ -15,6 +15,7 @@ echo "==> User=$USER_NAME  AppDir=$APP_DIR  Python=$PY"
 mkdir -p "$APP_DIR/templates"
 [ -f /tmp/app.py ] && mv /tmp/app.py "$APP_DIR/app.py"
 [ -f /tmp/index.html ] && mv /tmp/index.html "$APP_DIR/templates/index.html"
+[ -f /tmp/emotion.html ] && mv /tmp/emotion.html "$APP_DIR/templates/emotion.html"
 echo "==> App files in place:"
 ls -l "$APP_DIR" "$APP_DIR/templates"
 
@@ -52,6 +53,23 @@ else
 fi
 sudo systemctl disable --now serial-getty@ttyAMA0.service 2>/dev/null || true
 sudo systemctl disable --now serial-getty@ttyS0.service 2>/dev/null || true
+
+# 3b. Enable SPI0 for the WS2812 emotion-ring LEDs (data on MOSI/GPIO10).
+#     Use spi0-1cs,no_miso so only CE0/GPIO8 is claimed: this keeps CE1/GPIO7
+#     free (Motor 2 DIR) and frees MISO/GPIO9 (Motor 1 end-stop).
+if ! grep -q '^dtparam=spi=on' "$CONFIG"; then
+    sudo sed -i 's/^#dtparam=spi=on/dtparam=spi=on/' "$CONFIG"
+    grep -q '^dtparam=spi=on' "$CONFIG" || echo 'dtparam=spi=on' | sudo tee -a "$CONFIG" >/dev/null
+    echo "==> Enabled dtparam=spi=on in $CONFIG"
+else
+    echo "==> dtparam=spi=on already set"
+fi
+if ! grep -q '^dtoverlay=spi0-1cs,no_miso' "$CONFIG"; then
+    echo 'dtoverlay=spi0-1cs,no_miso' | sudo tee -a "$CONFIG" >/dev/null
+    echo "==> Added dtoverlay=spi0-1cs,no_miso to $CONFIG"
+else
+    echo "==> dtoverlay=spi0-1cs,no_miso already set"
+fi
 
 # 4. systemd service (runs system python3 directly; all deps are system-wide)
 SERVICE=/etc/systemd/system/led_app.service

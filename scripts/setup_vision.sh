@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -e
-PW='12345'
+# sudo will prompt for the password interactively (run this in a real terminal,
+# e.g. via `ssh -t`). Never hard-code credentials in a committed script.
 echo "=== apt update + install python3-opencv ==="
-echo "$PW" | sudo -S apt-get update -qq
-echo "$PW" | sudo -S DEBIAN_FRONTEND=noninteractive apt-get install -y python3-opencv
+sudo apt-get update -qq
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3-opencv
 echo "=== verify cv2 ==="
 python3 - <<'PY'
 import cv2, numpy
