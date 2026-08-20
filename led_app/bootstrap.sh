@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # One-time bootstrap for a fresh Raspberry Pi OS install.
 # Sets up the led_app directory, Python dependencies, systemd service, UART for
-# the SERVO42C bus, and SPI0 for the WS2812 emotion-ring LEDs.
+# the SERVO42C bus, SPI0 for the WS2812 emotion-ring LEDs, and hardware PWM on
+# GPIO12/13 for the axis 5/6 servos.
 set -e
 
 USER_NAME="$(whoami)"
@@ -69,6 +70,16 @@ if ! grep -q '^dtoverlay=spi0-1cs,no_miso' "$CONFIG"; then
     echo "==> Added dtoverlay=spi0-1cs,no_miso to $CONFIG"
 else
     echo "==> dtoverlay=spi0-1cs,no_miso already set"
+fi
+
+# 3c. Enable hardware PWM on GPIO12/13 for the axis 5/6 servos.
+#     This creates the RP1 PWM0 controller (peripheral address 1f00098000)
+#     that app.py auto-detects. Without it the servos are unavailable.
+if ! grep -q '^dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4' "$CONFIG"; then
+    echo 'dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4' | sudo tee -a "$CONFIG" >/dev/null
+    echo "==> Added dtoverlay=pwm-2chan (GPIO12/13 servo PWM) to $CONFIG"
+else
+    echo "==> dtoverlay=pwm-2chan already set"
 fi
 
 # 4. systemd service (runs system python3 directly; all deps are system-wide)
