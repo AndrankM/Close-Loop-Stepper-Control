@@ -1433,6 +1433,22 @@
       return (gripperOpenAngle + gripperClosedAngle) / 2;
     }
 
+    // Capture the current (known-good) slider position as the Open or Closed
+    // limit, so the toggle button only ever drives to calibrated safe angles
+    // and never stalls the servo against a mechanical stop.
+    function captureGripperLimit(which) {
+      const sid = GRIPPER_SERVO_ID;
+      const slider = document.getElementById(`servo-${sid}`);
+      const st = servoUiState[sid] || {};
+      let current = slider ? parseFloat(slider.value) : NaN;
+      if (!Number.isFinite(current)) current = Number.isFinite(st.angle) ? st.angle : 0;
+      current = clampGripperAngle(current);
+      const input = document.getElementById(
+        which === 'open' ? `servo-${sid}-open` : `servo-${sid}-closed`);
+      if (input) input.value = current.toFixed(0);
+      applyGripperLimits();
+    }
+
     function isGripperClosed(angle) {
       return Number.isFinite(angle) && angle >= gripperMidpoint();
     }
@@ -1474,6 +1490,10 @@
           <span class="servo-angle" style="min-width:2.1rem;text-align:center;">to</span>
           <input id="servo-${i}-closed" class="num-input" type="number" min="${SERVO_MIN}" max="${SERVO_MAX}" step="1"
                  value="${gripperClosedAngle}" onchange="applyGripperLimits()" title="Closed angle">
+        </div>
+        <div class="servo-actions" style="margin-top:0.4rem;">
+          <button class="servo-btn" onclick="captureGripperLimit('open')" title="Set the Open limit to the current slider angle">Set Open ← slider</button>
+          <button class="servo-btn" onclick="captureGripperLimit('closed')" title="Set the Closed limit to the current slider angle">Set Closed ← slider</button>
         </div>
         <div class="servo-slider" style="margin-top:0.55rem;">
           <label for="servo-${i}-delay">Detach</label>
