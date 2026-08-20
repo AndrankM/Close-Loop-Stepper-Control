@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Option 1 · Control Room</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg0: #0a0e17; --bg1: #0f1524;
+    --card: rgba(22,28,44,0.72);
+    --stroke: rgba(120,140,190,0.16);
+    --txt: #e8ecf6; --muted: #8a93ad;
+    --accent: #35e0d0; --accent2: #5b8cff;
+    --warn: #fbbf24; --bad: #ff5a6e; --good: #34d399;
+  }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: var(--txt);
+    min-height: 100vh; padding: 26px 22px 40px;
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(53,224,208,0.10), transparent 60%),
+      radial-gradient(900px 500px at 95% 0%, rgba(91,140,255,0.12), transparent 55%),
+      linear-gradient(180deg, var(--bg1), var(--bg0));
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  header.page { text-align:center; margin-bottom: 22px; }
+  header.page h1 {
+    font-size: 1.7rem; font-weight: 800; letter-spacing:.3px;
+    background: linear-gradient(90deg, #fff, #a9e9e2);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  header.page .sub { color: var(--muted); font-size:.72rem; letter-spacing:.22em; text-transform:uppercase; margin-top:6px; }
+  .estop {
+    margin-top:16px; background: linear-gradient(180deg,#e0243c,#b3132a);
+    color:#fff; border:1px solid #ff6b7d; border-radius:12px;
+    padding:.7rem 1.8rem; font-weight:800; letter-spacing:.05em; font-size:1rem;
+    box-shadow: 0 8px 24px rgba(224,36,60,.35), inset 0 1px 0 rgba(255,255,255,.25); cursor:pointer;
+  }
+  .topbar { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin: 18px 0 26px; }
+  .pill {
+    display:flex; align-items:center; gap:8px; background:var(--card);
+    border:1px solid var(--stroke); border-radius:999px; padding:.4rem .9rem;
+    font-size:.78rem; backdrop-filter: blur(8px);
+  }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--good); box-shadow:0 0 10px var(--good); }
+  .dot.warn{ background:var(--warn); box-shadow:0 0 10px var(--warn);} 
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(320px,1fr)); gap:18px; }
+  .card {
+    background:var(--card); border:1px solid var(--stroke); border-radius:18px;
+    padding:18px; backdrop-filter: blur(10px);
+    box-shadow: 0 12px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05);
+    transition: transform .15s, box-shadow .15s, border-color .15s;
+  }
+  .card:hover { transform: translateY(-3px); border-color: rgba(53,224,208,.4); box-shadow:0 18px 44px rgba(0,0,0,.5); }
+  .card h3 { font-size:1rem; display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+  .tag { font-size:.62rem; letter-spacing:.12em; text-transform:uppercase; color:var(--accent); border:1px solid rgba(53,224,208,.35); border-radius:6px; padding:2px 7px; }
+  .sub2 { color:var(--muted); font-size:.72rem; margin-bottom:14px; }
+  .readout { text-align:center; margin:6px 0 14px; }
+  .readout .big { font-size:2.6rem; font-weight:800; font-variant-numeric:tabular-nums;
+    background:linear-gradient(90deg,#fff,#9fe6e0); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .readout .deg { color:var(--muted); font-size:.8rem; }
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
+  .stat { background:rgba(10,14,24,.6); border:1px solid var(--stroke); border-radius:10px; padding:8px; text-align:center; }
+  .stat .l { font-size:.6rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); }
+  .stat .v { font-size:1rem; font-weight:700; font-variant-numeric:tabular-nums; }
+  .chart { height:78px; border-radius:10px; background:
+      linear-gradient(180deg, rgba(53,224,208,.16), transparent),
+      rgba(10,14,24,.5); border:1px solid var(--stroke); position:relative; overflow:hidden; }
+  .chart svg { position:absolute; inset:0; width:100%; height:100%; }
+  .btns { display:flex; gap:8px; margin-top:14px; }
+  .btn { flex:1; border:1px solid var(--stroke); background:rgba(255,255,255,.04); color:var(--txt);
+    border-radius:10px; padding:.55rem; font-weight:600; cursor:pointer; font-size:.82rem; }
+  .btn.primary { background:linear-gradient(180deg,#3ad6c8,#1fae b0); border-color:transparent; color:#04211f;
+    background:linear-gradient(180deg,#3ad6c8,#1faeb0); }
+  .btn.warn { background:linear-gradient(180deg,#ff6b7d,#d8213a); border-color:transparent; color:#fff; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="page">
+    <h1>Closed-Loop Stepper Control</h1>
+    <div class="sub">4× NEMA 17 · MKS SERVO42C</div>
+    <button class="estop">■ EMERGENCY STOP</button>
+  </header>
+
+  <div class="topbar">
+    <div class="pill"><span class="dot"></span> Service active</div>
+    <div class="pill"><span class="dot"></span> SoC 47.2 °C</div>
+    <div class="pill"><span class="dot warn"></span> CPU 63%</div>
+    <div class="pill"><span class="dot"></span> 5.1 V · 3.0 A</div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Joint 4 · Motor 1 <span class="tag">addr 0xE3</span></h3>
+      <div class="sub2">Encoder · output shaft · SERVO42C (UART)</div>
+      <div class="readout"><div class="big">128.4°</div><div class="deg">42 133 counts</div></div>
+      <div class="stats">
+        <div class="stat"><div class="l">Speed</div><div class="v">0.0°/s</div></div>
+        <div class="stat"><div class="l">Target</div><div class="v">130.0°</div></div>
+        <div class="stat"><div class="l">Error</div><div class="v">-1.6°</div></div>
+      </div>
+      <div class="chart"><svg viewBox="0 0 300 78" preserveAspectRatio="none"><polyline fill="none" stroke="#35e0d0" stroke-width="2" points="0,60 30,58 60,50 90,40 120,44 150,30 180,26 210,32 240,22 270,20 300,24"/></svg></div>
+      <div class="btns"><button class="btn">Jog −</button><button class="btn primary">Home</button><button class="btn">Jog +</button></div>
+    </div>
+
+    <div class="card">
+      <h3>Joint 3 · Motor 2 <span class="tag">addr 0xE1</span></h3>
+      <div class="sub2">Encoder · output shaft · SERVO42C (UART)</div>
+      <div class="readout"><div class="big">271.9°</div><div class="deg">49 512 counts</div></div>
+      <div class="stats">
+        <div class="stat"><div class="l">Speed</div><div class="v">12.4°/s</div></div>
+        <div class="stat"><div class="l">Target</div><div class="v">270.0°</div></div>
+        <div class="stat"><div class="l">Error</div><div class="v">+1.9°</div></div>
+      </div>
+      <div class="chart"><svg viewBox="0 0 300 78" preserveAspectRatio="none"><polyline fill="none" stroke="#5b8cff" stroke-width="2" points="0,40 30,44 60,38 90,30 120,36 150,48 180,54 210,44 240,40 270,34 300,30"/></svg></div>
+      <div class="btns"><button class="btn">Jog −</button><button class="btn primary">Home</button><button class="btn">Jog +</button></div>
+    </div>
+
+    <div class="card">
+      <h3>Camera · Emotion <span class="tag">640×480</span></h3>
+      <div class="sub2">YuNet face detect · FER+ classify</div>
+      <div class="chart" style="height:150px; display:flex; align-items:center; justify-content:center; color:var(--muted)">live preview</div>
+      <div class="btns"><button class="btn primary">Track face</button><button class="btn warn">Stop</button></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

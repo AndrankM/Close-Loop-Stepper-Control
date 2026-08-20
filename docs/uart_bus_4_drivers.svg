@@ -1,172 +1,142 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="760" viewBox="0 0 1100 760" font-family="Segoe UI, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="920" viewBox="0 0 1400 920" font-family="Segoe UI, Arial, sans-serif">
   <defs>
-    <marker id="dot" markerWidth="8" markerHeight="8" refX="4" refY="4">
-      <circle cx="4" cy="4" r="3" fill="#222"/>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#15202b" flood-opacity="0.16"/>
+    </filter>
+    <marker id="arrow-red" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 Z" fill="#d33f36"/>
     </marker>
+    <marker id="arrow-blue" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 Z" fill="#2476b5"/>
+    </marker>
+    <style>
+      .title { font-size: 28px; font-weight: 700; fill: #17212b; }
+      .subtitle { font-size: 15px; fill: #5e6b76; }
+      .card-title { font-size: 18px; font-weight: 700; }
+      .label { font-size: 14px; fill: #24313c; }
+      .small { font-size: 12px; fill: #5e6b76; }
+      .pin { font-size: 13px; font-weight: 600; }
+      .net { font-size: 12px; font-weight: 700; fill: #ffffff; letter-spacing: 0.3px; }
+    </style>
   </defs>
 
-  <rect x="0" y="0" width="1100" height="760" fill="#ffffff"/>
-  <text x="550" y="34" text-anchor="middle" font-size="22" font-weight="700" fill="#1a1a1a">
-    SERVO42C Multi-Drop UART Bus &#8212; 4 Drivers (Option A)
-  </text>
-  <text x="550" y="56" text-anchor="middle" font-size="13" fill="#666">
-    9600 baud &#183; addresses 0xE0&#8211;0xE3 &#183; only the addressed driver replies
-  </text>
+  <rect width="1400" height="920" fill="#f4f7fa"/>
+  <text x="700" y="42" text-anchor="middle" class="title">Raspberry Pi 5 → Four SERVO42C Drivers</text>
+  <text x="700" y="68" text-anchor="middle" class="subtitle">Shared 3.3 V TTL UART · 9600 baud · one 1 kΩ series resistor on each driver TX</text>
 
-  <!-- ================= Raspberry Pi ================= -->
-  <rect x="40" y="120" width="200" height="270" rx="12" fill="#1f6f43" stroke="#0f3d24" stroke-width="2"/>
-  <text x="140" y="150" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">Raspberry Pi 5</text>
-
-  <!-- Pi pin pads -->
-  <g font-size="13" fill="#ffffff">
-    <rect x="210" y="178" width="30" height="20" fill="#0f3d24"/>
-    <text x="200" y="193" text-anchor="end">3V3</text>
-    <rect x="210" y="228" width="30" height="20" fill="#0f3d24"/>
-    <text x="200" y="243" text-anchor="end">TXD (GPIO14)</text>
-    <rect x="210" y="278" width="30" height="20" fill="#0f3d24"/>
-    <text x="200" y="293" text-anchor="end">RXD (GPIO15)</text>
-    <rect x="210" y="338" width="30" height="20" fill="#0f3d24"/>
-    <text x="200" y="353" text-anchor="end">GND</text>
+  <!-- Raspberry Pi card -->
+  <g filter="url(#shadow)">
+    <rect x="45" y="128" width="455" height="382" rx="16" fill="#ffffff" stroke="#c8d1da" stroke-width="2"/>
+    <rect x="45" y="128" width="455" height="58" rx="16" fill="#247a4a"/>
+    <path d="M45 170 H500 V186 H45 Z" fill="#247a4a"/>
+    <text x="272" y="164" text-anchor="middle" class="card-title" fill="#ffffff">Raspberry Pi 5 — 40-pin header</text>
   </g>
 
-  <!-- ================= Bus rails ================= -->
-  <!-- TX rail (Pi TXD -> all driver Rx) : red -->
-  <text x="300" y="225" font-size="12" fill="#c0392b" font-weight="700">TX rail (Pi&#8594;drivers)</text>
-  <line x1="240" y1="238" x2="300" y2="238" stroke="#c0392b" stroke-width="2.5"/>
-  <line x1="300" y1="186" x2="300" y2="700" stroke="#c0392b" stroke-width="2.5"/>
+  <!-- Pi TX -->
+  <text x="72" y="239" class="pin" fill="#d33f36">Physical pin 8</text>
+  <text x="72" y="260" class="label">GPIO14 / TXD</text>
+  <circle cx="280" cy="248" r="7" fill="#d33f36"/>
+  <line x1="287" y1="248" x2="463" y2="248" stroke="#d33f36" stroke-width="4" marker-end="url(#arrow-red)"/>
 
-  <!-- RX rail (all driver Tx -> Pi RXD) : blue -->
-  <text x="360" y="312" font-size="12" fill="#2471a3" font-weight="700">RX rail (drivers&#8594;Pi)</text>
-  <line x1="240" y1="288" x2="360" y2="288" stroke="#2471a3" stroke-width="2.5"/>
-  <line x1="360" y1="208" x2="360" y2="700" stroke="#2471a3" stroke-width="2.5"/>
+  <!-- Pi RX -->
+  <text x="72" y="329" class="pin" fill="#2476b5">Physical pin 10</text>
+  <text x="72" y="350" class="label">GPIO15 / RXD</text>
+  <circle cx="280" cy="338" r="7" fill="#2476b5"/>
+  <line x1="463" y1="338" x2="287" y2="338" stroke="#2476b5" stroke-width="4" marker-end="url(#arrow-blue)"/>
 
-  <!-- GND rail : black -->
-  <text x="420" y="372" font-size="12" fill="#333" font-weight="700">GND (common)</text>
-  <line x1="240" y1="348" x2="420" y2="348" stroke="#222" stroke-width="2.5"/>
-  <line x1="420" y1="230" x2="420" y2="700" stroke="#222" stroke-width="2.5"/>
+  <!-- Pi GND -->
+  <text x="72" y="419" class="pin" fill="#2e3439">Physical pin 6</text>
+  <text x="72" y="440" class="label">GND (any Pi ground pin)</text>
+  <circle cx="280" cy="428" r="7" fill="#2e3439"/>
+  <line x1="287" y1="428" x2="470" y2="428" stroke="#2e3439" stroke-width="4"/>
 
-  <!-- ================= 4 Drivers ================= -->
-  <!-- driver template positions -->
-  <!-- columns: Rx tap at x=300, Tx tap at x=360, GND tap at x=420 -->
-  <g>
-    <!-- Driver Y positions -->
-    <!-- D1 -->
-    <g>
-      <rect x="700" y="120" width="220" height="120" rx="10" fill="#16202b" stroke="#0b1118" stroke-width="2"/>
-      <text x="810" y="146" text-anchor="middle" font-size="15" font-weight="700" fill="#a0cfff">SERVO42C #1</text>
-      <text x="810" y="166" text-anchor="middle" font-size="12" fill="#7f8c9b">Motor 1 &#183; addr 0xE0</text>
-      <!-- pads -->
-      <rect x="680" y="178" width="20" height="16" fill="#0b1118"/>
-      <text x="710" y="191" font-size="12" fill="#cfd6ee">Rx</text>
-      <rect x="680" y="200" width="20" height="16" fill="#0b1118"/>
-      <text x="710" y="213" font-size="12" fill="#cfd6ee">Tx</text>
-      <rect x="680" y="222" width="20" height="16" fill="#0b1118"/>
-      <text x="710" y="235" font-size="12" fill="#cfd6ee">G</text>
-      <!-- Rx connection (direct from TX rail) -->
-      <line x1="300" y1="186" x2="680" y2="186" stroke="#c0392b" stroke-width="2"/>
-      <circle cx="300" cy="186" r="3.5" fill="#c0392b"/>
-      <!-- Tx connection with series resistor to RX rail -->
-      <line x1="600" y1="208" x2="680" y2="208" stroke="#2471a3" stroke-width="2"/>
-      <rect x="540" y="200" width="50" height="16" fill="#fff" stroke="#2471a3" stroke-width="2"/>
-      <text x="565" y="196" text-anchor="middle" font-size="10" fill="#1a5276">1k&#937;</text>
-      <line x1="360" y1="208" x2="540" y2="208" stroke="#2471a3" stroke-width="2"/>
-      <circle cx="360" cy="208" r="3.5" fill="#2471a3"/>
-      <!-- GND -->
-      <line x1="420" y1="230" x2="680" y2="230" stroke="#222" stroke-width="2"/>
-      <circle cx="420" cy="230" r="3.5" fill="#222"/>
-    </g>
+  <!-- Pi net names are placed inside the Pi card to keep the center clear. -->
+  <text x="445" y="238" text-anchor="end" class="small" fill="#d33f36">PI_TX_BUS</text>
+  <text x="445" y="328" text-anchor="end" class="small" fill="#2476b5">PI_RX_BUS</text>
+  <text x="445" y="418" text-anchor="end" class="small" fill="#2e3439">COMMON_GND</text>
 
-    <!-- D2 -->
-    <g>
-      <rect x="700" y="260" width="220" height="120" rx="10" fill="#16202b" stroke="#0b1118" stroke-width="2"/>
-      <text x="810" y="286" text-anchor="middle" font-size="15" font-weight="700" fill="#a0cfff">SERVO42C #2</text>
-      <text x="810" y="306" text-anchor="middle" font-size="12" fill="#7f8c9b">Motor 2 &#183; addr 0xE1</text>
-      <rect x="680" y="318" width="20" height="16" fill="#0b1118"/>
-      <text x="710" y="331" font-size="12" fill="#cfd6ee">Rx</text>
-      <rect x="680" y="340" width="20" height="16" fill="#0b1118"/>
-      <text x="710" y="353" font-size="12" fill="#cfd6ee">Tx</text>
-      <rect x="680" y="362" width="20" height="16" fill="#0b1118"/>
-      <text x="710" y="375" font-size="12" fill="#cfd6ee">G</text>
-      <line x1="300" y1="326" x2="680" y2="326" stroke="#c0392b" stroke-width="2"/>
-      <circle cx="300" cy="326" r="3.5" fill="#c0392b"/>
-      <line x1="600" y1="348" x2="680" y2="348" stroke="#2471a3" stroke-width="2"/>
-      <rect x="540" y="340" width="50" height="16" fill="#fff" stroke="#2471a3" stroke-width="2"/>
-      <text x="565" y="336" text-anchor="middle" font-size="10" fill="#1a5276">1k&#937;</text>
-      <line x1="360" y1="348" x2="540" y2="348" stroke="#2471a3" stroke-width="2"/>
-      <circle cx="360" cy="348" r="3.5" fill="#2471a3"/>
-      <line x1="420" y1="370" x2="680" y2="370" stroke="#222" stroke-width="2"/>
-      <circle cx="420" cy="370" r="3.5" fill="#222"/>
-    </g>
-
-    <!-- D3 -->
-    <g>
-      <rect x="700" y="400" width="220" height="120" rx="10" fill="#16202b" stroke="#0b1118" stroke-width="2"/>
-      <text x="810" y="426" text-anchor="middle" font-size="15" font-weight="700" fill="#a0cfff">SERVO42C #3</text>
-      <text x="810" y="446" text-anchor="middle" font-size="12" fill="#7f8c9b">Motor 3 &#183; addr 0xE2</text>
-      <rect x="680" y="458" width="20" height="16" fill="#0b1118"/>
-      <text x="710" y="471" font-size="12" fill="#cfd6ee">Rx</text>
-      <rect x="680" y="480" width="20" height="16" fill="#0b1118"/>
-      <text x="710" y="493" font-size="12" fill="#cfd6ee">Tx</text>
-      <rect x="680" y="502" width="20" height="16" fill="#0b1118"/>
-      <text x="710" y="515" font-size="12" fill="#cfd6ee">G</text>
-      <line x1="300" y1="466" x2="680" y2="466" stroke="#c0392b" stroke-width="2"/>
-      <circle cx="300" cy="466" r="3.5" fill="#c0392b"/>
-      <line x1="600" y1="488" x2="680" y2="488" stroke="#2471a3" stroke-width="2"/>
-      <rect x="540" y="480" width="50" height="16" fill="#fff" stroke="#2471a3" stroke-width="2"/>
-      <text x="565" y="476" text-anchor="middle" font-size="10" fill="#1a5276">1k&#937;</text>
-      <line x1="360" y1="488" x2="540" y2="488" stroke="#2471a3" stroke-width="2"/>
-      <circle cx="360" cy="488" r="3.5" fill="#2471a3"/>
-      <line x1="420" y1="510" x2="680" y2="510" stroke="#222" stroke-width="2"/>
-      <circle cx="420" cy="510" r="3.5" fill="#222"/>
-    </g>
-
-    <!-- D4 -->
-    <g>
-      <rect x="700" y="540" width="220" height="120" rx="10" fill="#16202b" stroke="#0b1118" stroke-width="2"/>
-      <text x="810" y="566" text-anchor="middle" font-size="15" font-weight="700" fill="#a0cfff">SERVO42C #4</text>
-      <text x="810" y="586" text-anchor="middle" font-size="12" fill="#7f8c9b">Motor 4 &#183; addr 0xE3</text>
-      <rect x="680" y="598" width="20" height="16" fill="#0b1118"/>
-      <text x="710" y="611" font-size="12" fill="#cfd6ee">Rx</text>
-      <rect x="680" y="620" width="20" height="16" fill="#0b1118"/>
-      <text x="710" y="633" font-size="12" fill="#cfd6ee">Tx</text>
-      <rect x="680" y="642" width="20" height="16" fill="#0b1118"/>
-      <text x="710" y="655" font-size="12" fill="#cfd6ee">G</text>
-      <line x1="300" y1="606" x2="680" y2="606" stroke="#c0392b" stroke-width="2"/>
-      <circle cx="300" cy="606" r="3.5" fill="#c0392b"/>
-      <line x1="600" y1="628" x2="680" y2="628" stroke="#2471a3" stroke-width="2"/>
-      <rect x="540" y="620" width="50" height="16" fill="#fff" stroke="#2471a3" stroke-width="2"/>
-      <text x="565" y="616" text-anchor="middle" font-size="10" fill="#1a5276">1k&#937;</text>
-      <line x1="360" y1="628" x2="540" y2="628" stroke="#2471a3" stroke-width="2"/>
-      <circle cx="360" cy="628" r="3.5" fill="#2471a3"/>
-      <line x1="420" y1="650" x2="680" y2="650" stroke="#222" stroke-width="2"/>
-      <circle cx="420" cy="650" r="3.5" fill="#222"/>
-    </g>
+  <!-- Driver 1 -->
+  <g filter="url(#shadow)">
+    <rect x="790" y="105" width="555" height="170" rx="14" fill="#ffffff" stroke="#c8d1da" stroke-width="2"/>
+    <rect x="1120" y="105" width="225" height="170" rx="14" fill="#172633"/>
+    <path d="M1120 105 H1137 V275 H1120 Z" fill="#172633"/>
+    <text x="1232" y="145" text-anchor="middle" class="card-title" fill="#a9d1ff">SERVO42C #1</text>
+    <text x="1232" y="169" text-anchor="middle" class="small" fill="#c2ccd5">Motor 1 · address 0xE0</text>
+    <text x="1232" y="211" text-anchor="middle" class="pin" fill="#f1c75b">3V3: NOT CONNECTED</text>
+    <text x="1232" y="238" text-anchor="middle" class="small" fill="#c2ccd5">Use RX · TX · G only</text>
   </g>
+  <rect x="565" y="122" width="150" height="30" rx="6" fill="#d33f36"/><text x="640" y="142" text-anchor="middle" class="net">PI_TX_BUS</text>
+  <line x1="715" y1="137" x2="790" y2="137" stroke="#d33f36" stroke-width="3" marker-end="url(#arrow-red)"/>
+  <text x="805" y="142" class="pin" fill="#d33f36">RX</text>
+  <rect x="565" y="172" width="150" height="30" rx="6" fill="#2476b5"/><text x="640" y="192" text-anchor="middle" class="net">PI_RX_BUS</text>
+  <line x1="715" y1="187" x2="735" y2="187" stroke="#2476b5" stroke-width="3"/>
+  <rect x="735" y="176" width="62" height="22" fill="#fff8df" stroke="#2476b5" stroke-width="2"/>
+  <text x="766" y="171" text-anchor="middle" class="small" fill="#2476b5">R1 1 kΩ</text>
+  <line x1="797" y1="187" x2="870" y2="187" stroke="#2476b5" stroke-width="3"/>
+  <text x="880" y="192" class="pin" fill="#2476b5">TX</text>
+  <rect x="565" y="222" width="150" height="30" rx="6" fill="#2e3439"/><text x="640" y="242" text-anchor="middle" class="net">COMMON_GND</text>
+  <line x1="715" y1="237" x2="790" y2="237" stroke="#2e3439" stroke-width="3"/>
+  <text x="805" y="242" class="pin" fill="#2e3439">G</text>
 
-  <!-- ================= Legend ================= -->
-  <g>
-    <rect x="40" y="430" width="240" height="230" rx="10" fill="#f7f9fb" stroke="#cdd6df" stroke-width="1.5"/>
-    <text x="60" y="458" font-size="14" font-weight="700" fill="#1a1a1a">Legend / Notes</text>
-
-    <line x1="60" y1="478" x2="100" y2="478" stroke="#c0392b" stroke-width="3"/>
-    <text x="108" y="482" font-size="12" fill="#333">Pi TXD &#8594; every driver Rx (direct)</text>
-
-    <line x1="60" y1="502" x2="100" y2="502" stroke="#2471a3" stroke-width="3"/>
-    <text x="108" y="506" font-size="12" fill="#333">Driver Tx &#8594; Pi RXD (via 1k&#937;)</text>
-
-    <line x1="60" y1="526" x2="100" y2="526" stroke="#222" stroke-width="3"/>
-    <text x="108" y="530" font-size="12" fill="#333">Common ground (required)</text>
-
-    <text x="60" y="560" font-size="11.5" fill="#555">&#8226; 1k&#937; series on each Tx limits</text>
-    <text x="72" y="576" font-size="11.5" fill="#555">contention if two ever drive.</text>
-    <text x="60" y="594" font-size="11.5" fill="#555">&#8226; No pull-up: SERVO42C idles</text>
-    <text x="72" y="610" font-size="11.5" fill="#555">Tx HIGH, so line stays defined.</text>
-    <text x="60" y="628" font-size="11.5" fill="#555">&#8226; Diodes NOT required at 9600</text>
-    <text x="72" y="644" font-size="11.5" fill="#555">baud with addressed protocol.</text>
+  <!-- Driver 2 -->
+  <g filter="url(#shadow)">
+    <rect x="790" y="310" width="555" height="170" rx="14" fill="#ffffff" stroke="#c8d1da" stroke-width="2"/>
+    <rect x="1120" y="310" width="225" height="170" rx="14" fill="#172633"/>
+    <path d="M1120 310 H1137 V480 H1120 Z" fill="#172633"/>
+    <text x="1232" y="350" text-anchor="middle" class="card-title" fill="#a9d1ff">SERVO42C #2</text>
+    <text x="1232" y="374" text-anchor="middle" class="small" fill="#c2ccd5">Motor 2 · address 0xE1</text>
+    <text x="1232" y="416" text-anchor="middle" class="pin" fill="#f1c75b">3V3: NOT CONNECTED</text>
+    <text x="1232" y="443" text-anchor="middle" class="small" fill="#c2ccd5">Use RX · TX · G only</text>
   </g>
+  <rect x="565" y="327" width="150" height="30" rx="6" fill="#d33f36"/><text x="640" y="347" text-anchor="middle" class="net">PI_TX_BUS</text>
+  <line x1="715" y1="342" x2="790" y2="342" stroke="#d33f36" stroke-width="3" marker-end="url(#arrow-red)"/><text x="805" y="347" class="pin" fill="#d33f36">RX</text>
+  <rect x="565" y="377" width="150" height="30" rx="6" fill="#2476b5"/><text x="640" y="397" text-anchor="middle" class="net">PI_RX_BUS</text>
+  <line x1="715" y1="392" x2="735" y2="392" stroke="#2476b5" stroke-width="3"/><rect x="735" y="381" width="62" height="22" fill="#fff8df" stroke="#2476b5" stroke-width="2"/><text x="766" y="376" text-anchor="middle" class="small" fill="#2476b5">R2 1 kΩ</text><line x1="797" y1="392" x2="870" y2="392" stroke="#2476b5" stroke-width="3"/><text x="880" y="397" class="pin" fill="#2476b5">TX</text>
+  <rect x="565" y="427" width="150" height="30" rx="6" fill="#2e3439"/><text x="640" y="447" text-anchor="middle" class="net">COMMON_GND</text>
+  <line x1="715" y1="442" x2="790" y2="442" stroke="#2e3439" stroke-width="3"/><text x="805" y="447" class="pin" fill="#2e3439">G</text>
 
-  <!-- Optional diode variant callout -->
-  <g>
-    <rect x="40" y="120" width="0" height="0"/>
+  <!-- Driver 3 -->
+  <g filter="url(#shadow)">
+    <rect x="790" y="515" width="555" height="170" rx="14" fill="#ffffff" stroke="#c8d1da" stroke-width="2"/>
+    <rect x="1120" y="515" width="225" height="170" rx="14" fill="#172633"/>
+    <path d="M1120 515 H1137 V685 H1120 Z" fill="#172633"/>
+    <text x="1232" y="555" text-anchor="middle" class="card-title" fill="#a9d1ff">SERVO42C #3</text>
+    <text x="1232" y="579" text-anchor="middle" class="small" fill="#c2ccd5">Motor 3 · address 0xE2</text>
+    <text x="1232" y="621" text-anchor="middle" class="pin" fill="#f1c75b">3V3: NOT CONNECTED</text>
+    <text x="1232" y="648" text-anchor="middle" class="small" fill="#c2ccd5">Use RX · TX · G only</text>
   </g>
+  <rect x="565" y="532" width="150" height="30" rx="6" fill="#d33f36"/><text x="640" y="552" text-anchor="middle" class="net">PI_TX_BUS</text>
+  <line x1="715" y1="547" x2="790" y2="547" stroke="#d33f36" stroke-width="3" marker-end="url(#arrow-red)"/><text x="805" y="552" class="pin" fill="#d33f36">RX</text>
+  <rect x="565" y="582" width="150" height="30" rx="6" fill="#2476b5"/><text x="640" y="602" text-anchor="middle" class="net">PI_RX_BUS</text>
+  <line x1="715" y1="597" x2="735" y2="597" stroke="#2476b5" stroke-width="3"/><rect x="735" y="586" width="62" height="22" fill="#fff8df" stroke="#2476b5" stroke-width="2"/><text x="766" y="581" text-anchor="middle" class="small" fill="#2476b5">R3 1 kΩ</text><line x1="797" y1="597" x2="870" y2="597" stroke="#2476b5" stroke-width="3"/><text x="880" y="602" class="pin" fill="#2476b5">TX</text>
+  <rect x="565" y="632" width="150" height="30" rx="6" fill="#2e3439"/><text x="640" y="652" text-anchor="middle" class="net">COMMON_GND</text>
+  <line x1="715" y1="647" x2="790" y2="647" stroke="#2e3439" stroke-width="3"/><text x="805" y="652" class="pin" fill="#2e3439">G</text>
+
+  <!-- Driver 4 -->
+  <g filter="url(#shadow)">
+    <rect x="790" y="720" width="555" height="170" rx="14" fill="#ffffff" stroke="#c8d1da" stroke-width="2"/>
+    <rect x="1120" y="720" width="225" height="170" rx="14" fill="#172633"/>
+    <path d="M1120 720 H1137 V890 H1120 Z" fill="#172633"/>
+    <text x="1232" y="760" text-anchor="middle" class="card-title" fill="#a9d1ff">SERVO42C #4</text>
+    <text x="1232" y="784" text-anchor="middle" class="small" fill="#c2ccd5">Motor 4 · address 0xE3</text>
+    <text x="1232" y="826" text-anchor="middle" class="pin" fill="#f1c75b">3V3: NOT CONNECTED</text>
+    <text x="1232" y="853" text-anchor="middle" class="small" fill="#c2ccd5">Use RX · TX · G only</text>
+  </g>
+  <rect x="565" y="737" width="150" height="30" rx="6" fill="#d33f36"/><text x="640" y="757" text-anchor="middle" class="net">PI_TX_BUS</text>
+  <line x1="715" y1="752" x2="790" y2="752" stroke="#d33f36" stroke-width="3" marker-end="url(#arrow-red)"/><text x="805" y="757" class="pin" fill="#d33f36">RX</text>
+  <rect x="565" y="787" width="150" height="30" rx="6" fill="#2476b5"/><text x="640" y="807" text-anchor="middle" class="net">PI_RX_BUS</text>
+  <line x1="715" y1="802" x2="735" y2="802" stroke="#2476b5" stroke-width="3"/><rect x="735" y="791" width="62" height="22" fill="#fff8df" stroke="#2476b5" stroke-width="2"/><text x="766" y="786" text-anchor="middle" class="small" fill="#2476b5">R4 1 kΩ</text><line x1="797" y1="802" x2="870" y2="802" stroke="#2476b5" stroke-width="3"/><text x="880" y="807" class="pin" fill="#2476b5">TX</text>
+  <rect x="565" y="837" width="150" height="30" rx="6" fill="#2e3439"/><text x="640" y="857" text-anchor="middle" class="net">COMMON_GND</text>
+  <line x1="715" y1="852" x2="790" y2="852" stroke="#2e3439" stroke-width="3"/><text x="805" y="857" class="pin" fill="#2e3439">G</text>
+
+  <!-- Safety note -->
+  <rect x="45" y="555" width="455" height="212" rx="14" fill="#fff8df" stroke="#e1b94c" stroke-width="2"/>
+  <text x="72" y="590" class="card-title" fill="#705711">Exact connection checklist</text>
+  <text x="72" y="624" class="label">1. Pi pin 8 (TXD) → all four driver RX pins.</text>
+  <text x="72" y="654" class="label">2. Each driver TX → its own 1 kΩ → Pi pin 10.</text>
+  <text x="72" y="684" class="label">3. Pi GND → all four driver G pins.</text>
+  <text x="72" y="714" class="label">4. Leave every driver 3V3 pin disconnected.</text>
+  <text x="72" y="746" class="pin" fill="#b3342c">Switch off Pi and motor power before wiring.</text>
+
+  <text x="45" y="900" class="small">Matching net labels are electrically the same connection. This layout intentionally uses no crossing wires.</text>
 </svg>

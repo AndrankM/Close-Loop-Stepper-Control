@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Option 3 · Cockpit</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  :root {
+    --bg:#0b0f16; --panel:#141a26; --panel2:#0f141e; --line:#222c3d;
+    --txt:#dfe5f0; --muted:#7a8598; --accent:#4fd1c5; --accent2:#7c9cff;
+    --good:#34d399; --warn:#fbbf24; --bad:#ff5a6e;
+  }
+  body { font-family:'Segoe UI', system-ui, sans-serif; background:var(--bg); color:var(--txt); min-height:100vh; }
+  .topbar { position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:14px;
+    padding:8px 16px; background:linear-gradient(180deg,#121826,#0d121c); border-bottom:1px solid var(--line); }
+  .topbar .brand { font-weight:800; font-size:.9rem; letter-spacing:.5px; margin-right:auto; }
+  .metric { display:flex; align-items:center; gap:6px; font-size:.72rem; font-variant-numeric:tabular-nums; color:#c3ccdb; }
+  .metric b { color:#fff; }
+  .led{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 7px var(--good);}
+  .led.warn{background:var(--warn);box-shadow:0 0 7px var(--warn);}
+  .estop{background:#c1142b;color:#fff;border:1px solid #ff5a6e;border-radius:6px;padding:.35rem .8rem;font-weight:800;font-size:.75rem;cursor:pointer;}
+  .wrap{ padding:14px; }
+  .layout{ display:grid; grid-template-columns: 1fr 1fr 1fr 1.2fr; gap:12px; }
+  @media(max-width:1000px){ .layout{ grid-template-columns:1fr 1fr; } }
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; }
+  .card.cam{ grid-row: span 2; }
+  .ch{ display:flex; justify-content:space-between; align-items:center; }
+  .ch h3{ font-size:.82rem; font-weight:700; }
+  .ch .addr{ font-size:.58rem; color:var(--accent); border:1px solid rgba(79,209,197,.35); border-radius:5px; padding:1px 6px; }
+  .num{ font-size:1.9rem; font-weight:800; font-variant-numeric:tabular-nums; margin:6px 0 2px; }
+  .num small{ font-size:.7rem; color:var(--muted); font-weight:500; margin-left:4px; }
+  .spark{ height:44px; margin:8px 0; border-radius:8px; background:var(--panel2); border:1px solid var(--line); position:relative; overflow:hidden; }
+  .spark svg{ position:absolute; inset:0; width:100%; height:100%; }
+  .row{ display:flex; justify-content:space-between; font-size:.68rem; color:var(--muted); }
+  .row b{ color:var(--txt); font-variant-numeric:tabular-nums; }
+  .mini{ display:flex; gap:6px; margin-top:10px; }
+  .mini button{ flex:1; font-size:.72rem; padding:.4rem; border-radius:7px; border:1px solid var(--line); background:#1a2233; color:var(--txt); cursor:pointer; }
+  .mini button.p{ background:linear-gradient(180deg,#4fd1c5,#2bb3a8); color:#04211f; border:none; font-weight:700; }
+  .cam .feed{ flex:1; min-height:220px; border-radius:8px; background:var(--panel2); border:1px solid var(--line); display:flex; align-items:center; justify-content:center; color:var(--muted); }
+  .cam .mini{ margin-top:10px; }
+  .cam-inner{ display:flex; flex-direction:column; height:100%; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">CLSC COCKPIT</div>
+    <div class="metric"><span class="led"></span> Service <b>active</b></div>
+    <div class="metric">SoC <b>47.2°C</b></div>
+    <div class="metric"><span class="led warn"></span> CPU <b>63%</b></div>
+    <div class="metric">Pwr <b>5.1V·3.0A</b></div>
+    <button class="estop">■ E-STOP</button>
+  </div>
+  <div class="wrap">
+    <div class="layout">
+      <div class="card">
+        <div class="ch"><h3>J4 · Motor 1</h3><span class="addr">0xE3</span></div>
+        <div class="num">128.4°<small>42 133</small></div>
+        <div class="spark"><svg viewBox="0 0 200 44" preserveAspectRatio="none"><polyline fill="none" stroke="#4fd1c5" stroke-width="1.6" points="0,34 20,32 40,26 60,20 80,24 100,14 120,12 140,16 160,10 180,9 200,11"/></svg></div>
+        <div class="row"><span>tgt <b>130.0</b></span><span>err <b>-1.6</b></span></div>
+        <div class="mini"><button>−</button><button class="p">Home</button><button>+</button></div>
+      </div>
+      <div class="card">
+        <div class="ch"><h3>J3 · Motor 2</h3><span class="addr">0xE1</span></div>
+        <div class="num">271.9°<small>49 512</small></div>
+        <div class="spark"><svg viewBox="0 0 200 44" preserveAspectRatio="none"><polyline fill="none" stroke="#7c9cff" stroke-width="1.6" points="0,22 20,26 40,20 60,16 80,22 100,30 120,34 140,26 160,22 180,18 200,16"/></svg></div>
+        <div class="row"><span>tgt <b>270.0</b></span><span>err <b>+1.9</b></span></div>
+        <div class="mini"><button>−</button><button class="p">Home</button><button>+</button></div>
+      </div>
+      <div class="card">
+        <div class="ch"><h3>J2 · Motor 3</h3><span class="addr">0xE2</span></div>
+        <div class="num">88.0°<small>16 018</small></div>
+        <div class="spark"><svg viewBox="0 0 200 44" preserveAspectRatio="none"><polyline fill="none" stroke="#4fd1c5" stroke-width="1.6" points="0,30 20,28 40,30 60,26 80,20 100,22 120,18 140,20 160,16 180,18 200,14"/></svg></div>
+        <div class="row"><span>tgt <b>90.0</b></span><span>err <b>-2.0</b></span></div>
+        <div class="mini"><button>−</button><button class="p">Home</button><button>+</button></div>
+      </div>
+      <div class="card cam">
+        <div class="cam-inner">
+          <div class="ch"><h3>Camera · Emotion</h3><span class="addr">640×480</span></div>
+          <div class="feed">live preview</div>
+          <div class="mini"><button class="p">Track</button><button>Stop</button></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ch"><h3>J1 · Motor 4</h3><span class="addr">0xE0</span></div>
+        <div class="num">15.2°<small>2 767</small></div>
+        <div class="spark"><svg viewBox="0 0 200 44" preserveAspectRatio="none"><polyline fill="none" stroke="#7c9cff" stroke-width="1.6" points="0,20 20,22 40,18 60,24 80,20 100,16 120,20 140,14 160,18 180,12 200,14"/></svg></div>
+        <div class="row"><span>tgt <b>15.0</b></span><span>err <b>+0.2</b></span></div>
+        <div class="mini"><button>−</button><button class="p">Home</button><button>+</button></div>
+      </div>
+      <div class="card">
+        <div class="ch"><h3>Axis 5 · Tilt</h3><span class="addr">PWM0</span></div>
+        <div class="num">62°<small>servo</small></div>
+        <div class="spark"><svg viewBox="0 0 200 44" preserveAspectRatio="none"><polyline fill="none" stroke="#4fd1c5" stroke-width="1.6" points="0,24 40,24 80,18 120,18 160,12 200,12"/></svg></div>
+        <div class="row"><span>min <b>20</b></span><span>max <b>110</b></span></div>
+        <div class="mini"><button>−</button><button class="p">Center</button><button>+</button></div>
+      </div>
+      <div class="card">
+        <div class="ch"><h3>Axis 6 · Roll</h3><span class="addr">PWM1</span></div>
+        <div class="num">0°<small>servo</small></div>
+        <div class="spark"><svg viewBox="0 0 200 44" preserveAspectRatio="none"><polyline fill="none" stroke="#7c9cff" stroke-width="1.6" points="0,22 40,22 80,22 120,22 160,22 200,22"/></svg></div>
+        <div class="row"><span>min <b>-90</b></span><span>max <b>90</b></span></div>
+        <div class="mini"><button>−</button><button class="p">Center</button><button>+</button></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

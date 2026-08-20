@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # One-time bootstrap for a fresh Raspberry Pi OS install.
-# Sets up the led_app directory, systemd service, and UART for the SERVO42C bus.
+# Sets up the led_app directory, Python dependencies, systemd service, and UART
+# for the SERVO42C bus.
 set -e
 
 USER_NAME="$(whoami)"
@@ -16,6 +17,21 @@ mkdir -p "$APP_DIR/templates"
 [ -f /tmp/index.html ] && mv /tmp/index.html "$APP_DIR/templates/index.html"
 echo "==> App files in place:"
 ls -l "$APP_DIR" "$APP_DIR/templates"
+
+# 1b. Python dependencies (system-wide, since the service runs /usr/bin/python3)
+#     Core deps are required; the rest degrade to no-ops if missing.
+echo "==> Installing Python dependencies (apt) ..."
+sudo apt-get update
+sudo apt-get install -y \
+    python3-flask \
+    python3-serial \
+    python3-spidev \
+    python3-numpy
+# rpi-hardware-pwm (axis 5/6 servos) is pip-only; optional, never fatal.
+if ! python3 -c 'import rpi_hardware_pwm' 2>/dev/null; then
+    sudo pip3 install --break-system-packages rpi-hardware-pwm \
+        || echo "==> WARN: rpi-hardware-pwm not installed (axis 5/6 servos disabled)"
+fi
 
 # 2. Enable UART on the GPIO header (TXD GPIO14 / RXD GPIO15)
 CONFIG=/boot/firmware/config.txt

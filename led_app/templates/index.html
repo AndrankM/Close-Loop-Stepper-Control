@@ -247,6 +247,53 @@
     .limit-pill.pressed { background: #3a1414; border-color: #5b1a1a; color: #ff9b9b; }
     .limit-pill.pressed .ld { background: #ff5a5a; box-shadow: 0 0 6px #ff5a5a; }
 
+    /* Software travel limits (Motor 4) — prominent highlighted box */
+    .soft-limit {
+      margin: 0.5rem 0 1.1rem;
+      border: 1px solid #35507f;
+      border-left: 4px solid #4a78ff;
+      border-radius: 10px;
+      background: linear-gradient(180deg, #182338 0%, #141a29 100%);
+      overflow: hidden;
+    }
+    .soft-limit-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 0.5rem; padding: 0.55rem 0.75rem;
+      background: #1b2947; border-bottom: 1px solid #2a3650;
+    }
+    .soft-limit-title {
+      color: #cfe0ff; font-size: 0.82rem; font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+    .soft-pill {
+      display: inline-flex; align-items: center; gap: 0.35rem;
+      padding: 0.2rem 0.5rem; border-radius: 999px;
+      background: #21283b; border: 1px solid #2a3650;
+      color: #8b93ad; font-size: 0.68rem; font-weight: 600;
+    }
+    .soft-pill .ld { width: 8px; height: 8px; border-radius: 50%; background: #39405a; }
+    .soft-pill.armed { background: #17301f; border-color: #1f5b34; color: #7ee0a2; }
+    .soft-pill.armed .ld { background: #33d17a; box-shadow: 0 0 6px #33d17a; }
+    .soft-pill.blocked { background: #3a2a14; border-color: #5b431a; color: #ffcf8a; }
+    .soft-pill.blocked .ld { background: #ffb84a; box-shadow: 0 0 6px #ffb84a; }
+    .soft-limit-body { padding: 0.7rem 0.75rem 0.6rem; }
+    .soft-toggle {
+      display: flex; align-items: center; gap: 0.45rem;
+      color: #c2cad6; font-size: 0.82rem; margin-bottom: 0.6rem; cursor: pointer;
+    }
+    .soft-lim-row {
+      display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;
+    }
+    .soft-lim-row > label { color: #8b93ad; font-size: 0.8rem; width: 3.2rem; }
+    .soft-lim-row .num-input { flex: 1; min-width: 0; }
+    .btn-soft {
+      background: #2a3650; color: #cfe0ff; border: 1px solid #35507f;
+      border-radius: 6px; padding: 0.4rem 0.7rem; font-size: 0.76rem;
+      cursor: pointer; white-space: nowrap;
+    }
+    .btn-soft:hover { background: #35507f; }
+    .soft-status-line { color: #8b93ad; font-size: 0.76rem; margin-top: 0.35rem; }
+
     .speed-value {
       font-weight: bold;
       color: #a0cfff;
@@ -716,6 +763,251 @@
       top: auto;
     }
   }
+
+  /* ---- Tabbed sections: split dense dashboard into focused views ---- */
+  .tabbar {
+    max-width: min(98vw, 1920px);
+    margin: 0 auto 1rem;
+    display: flex;
+    gap: 0.4rem;
+    padding: 0 0.2rem;
+    border-bottom: 2px solid var(--hmi-line, #2a2d3e);
+    flex-wrap: wrap;
+  }
+  .tab-btn {
+    appearance: none;
+    border: 1px solid transparent;
+    border-bottom: none;
+    background: transparent;
+    color: var(--hmi-muted, #8a94ad);
+    font-size: 1.02rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    padding: 0.7rem 1.4rem;
+    border-radius: 12px 12px 0 0;
+    cursor: pointer;
+    margin-bottom: -2px;
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .tab-btn:hover { color: var(--hmi-ink, #cfd6ee); }
+  .tab-btn.active {
+    color: var(--hmi-accent, #4a78ff);
+    background: var(--hmi-panel, #1a1d27);
+    border-color: var(--hmi-line, #2a2d3e);
+    border-bottom: 2px solid var(--hmi-panel, #1a1d27);
+  }
+  .tab-panel { animation: tabfade .18s ease; }
+  .tab-panel.hidden { display: none; }
+  @keyframes tabfade {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  .motors-layout,
+  .program-layout {
+    max-width: min(98vw, 1920px);
+    margin: 0 auto;
+  }
+  .motors-layout .servo-card {
+    max-width: 1720px;
+    margin: 1.3rem auto 0;
+  }
+  .program-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(520px, 1fr);
+    gap: 1.2rem;
+    align-items: start;
+  }
+  .program-layout .teach { max-width: none; margin: 0; }
+  .program-layout .twin-card { position: sticky; top: 12px; margin: 0; }
+  @media (max-width: 1200px) {
+    .program-layout { grid-template-columns: 1fr; }
+    .program-layout .twin-card { position: static; }
+  }
+
+  /* =====================================================================
+     OPTION 2 — Industrial HMI light theme override
+     Appended last so it cascades over the original dark rules without
+     touching markup or JS. Palette-driven; class names match the app.
+     ===================================================================== */
+  :root {
+    --hmi-bg:      #eef1f5;
+    --hmi-panel:   #ffffff;
+    --hmi-panel2:  #f7f9fb;
+    --hmi-ink:     #1c2430;
+    --hmi-muted:   #66707e;
+    --hmi-line:    #d7dde5;
+    --hmi-accent:  #0b7285;
+    --hmi-accent2: #5f3dc4;
+    --hmi-good:    #1a9e5f;
+    --hmi-warn:    #c9820a;
+    --hmi-bad:     #c1272d;
+    --hmi-bar:     #12202b;
+  }
+
+  body {
+    background: var(--hmi-bg);
+    color: var(--hmi-ink);
+  }
+
+  /* ---- Top bar (was page-header) ---- */
+  .page-header {
+    background: var(--hmi-bar);
+    color: #dbe6ee;
+    border-radius: 14px;
+    padding: 1rem 1.2rem 1.1rem;
+    max-width: min(98vw, 1920px);
+    margin: 0 auto 1.1rem;
+    box-shadow: 0 2px 10px rgba(20,30,45,0.12);
+  }
+  .page-header h1 { color: #ffffff; }
+  h1 { color: var(--hmi-ink); }
+  .page-header .sub { color: #91a1b0; }
+
+  .cpu-temp {
+    color: #cfe8dc;
+    border-color: rgba(159,230,194,0.35);
+    background: rgba(255,255,255,0.06);
+  }
+  .cpu-temp.warm { color: #ffd479; border-color: rgba(255,212,121,0.4); }
+  .cpu-temp.hot  { color: #ff9b9b; border-color: rgba(255,155,155,0.4); }
+  .cam-chip {
+    color: #cfe8dc; background: rgba(255,255,255,0.06);
+    border-color: rgba(159,230,194,0.35);
+  }
+  .cam-chip:hover { background: rgba(255,255,255,0.12); }
+
+  /* ---- Cards / panels ---- */
+  .health-card,
+  .motor-unit,
+  .panel,
+  .cam-card,
+  .teach,
+  .twin-card,
+  .servo-card {
+    background: var(--hmi-panel);
+    border: 1px solid var(--hmi-line);
+    box-shadow: 0 1px 3px rgba(20,30,45,0.06);
+    color: var(--hmi-ink);
+  }
+  .panel,
+  .servo-unit,
+  .rev-counter,
+  .enc-chart-wrap,
+  .cc-verdict,
+  .cc-view,
+  .hc-item,
+  .num-input,
+  .twin-stage {
+    background: var(--hmi-panel2);
+    border-color: var(--hmi-line);
+    color: var(--hmi-ink);
+  }
+
+  /* Colored top accent strip on each motor unit */
+  .motor-unit {
+    border-top: 4px solid var(--hmi-accent);
+    border-radius: 12px;
+  }
+
+  .unit-title,
+  .card-title,
+  .teach .card-title,
+  .cc-title,
+  .hc-title { color: var(--hmi-ink); border-color: var(--hmi-line); }
+  .unit-title small,
+  .card-title small { color: var(--hmi-muted); }
+
+  /* Numeric / value emphasis */
+  .enc-cell .enc-v,
+  .rev-counter-v,
+  .speed-value,
+  .servo-angle,
+  .hc-item .hc-value { color: var(--hmi-accent); }
+  .enc-cell .enc-k,
+  .hc-item .hc-label,
+  .rev-counter-k,
+  .enc-chart-head,
+  .motor-status,
+  .control-row label,
+  .servo-slider label,
+  .teach-settings,
+  .twin-status { color: var(--hmi-muted); }
+  .motor-status span { color: var(--hmi-ink); }
+
+  /* Inputs */
+  .num-input,
+  .teach-settings input[type=number],
+  .teach-prog input[type=text],
+  .teach-prog select,
+  .enc-chart-head select,
+  .wp-table input.dwell,
+  .twin-lrow input {
+    background: #ffffff;
+    border: 1px solid var(--hmi-line);
+    color: var(--hmi-ink);
+  }
+  input[type="range"] { accent-color: var(--hmi-accent); }
+
+  /* Buttons */
+  .btn-jog,
+  .servo-btn,
+  .rev-reset-btn,
+  .btn-t {
+    background: #ffffff;
+    color: var(--hmi-ink);
+    border: 1px solid var(--hmi-line);
+  }
+  .btn-jog:hover,
+  .btn-t:hover,
+  .rev-reset-btn:hover { background: var(--hmi-panel2); }
+  .btn-jog.jogging { background: var(--hmi-good); color: #fff; }
+  .btn-t.primary { background: var(--hmi-accent); border-color: var(--hmi-accent); color: #fff; }
+  .btn-t.primary:hover { background: #0a5f70; }
+  .btn-t.active { background: var(--hmi-good); border-color: var(--hmi-good); color: #fff; }
+  .btn-motor-on  { background: var(--hmi-good); color: #fff; }
+  .btn-motor-off { background: var(--hmi-bad); color: #fff; }
+  .servo-btn.on { background: var(--hmi-good); border-color: var(--hmi-good); color: #fff; }
+
+  /* Encoder dial on light */
+  .enc-dial {
+    border-color: var(--hmi-line);
+    background: radial-gradient(circle at center, #ffffff, #eef1f5);
+  }
+  .enc-needle, .enc-hub { background: var(--hmi-accent); }
+
+  /* Live badge */
+  .live-badge {
+    color: var(--hmi-good);
+    background: rgba(26,158,95,0.10);
+    border-color: rgba(26,158,95,0.35);
+  }
+
+  /* Limit pill */
+  .limit-pill {
+    background: #eef2f6; border-color: var(--hmi-line); color: var(--hmi-muted);
+  }
+  .limit-pill .ld { background: #c2cad6; }
+
+  /* Health bars */
+  .hc-bar { background: #e2e7ee; }
+
+  /* Waypoint table */
+  .wp-table th, .wp-table td { color: var(--hmi-ink); border-color: var(--hmi-line); }
+  .wp-table th { color: var(--hmi-muted); }
+  .wp-table tr.current td { background: #e6f0f4; }
+
+  /* Camera side text */
+  .cc-verdict .label { color: var(--hmi-ink); }
+  .cc-verdict .conf, .cc-hint, .cc-emo .row .val { color: var(--hmi-muted); }
+  .cc-emo .row .name { color: var(--hmi-ink); }
+  .cc-bar { background: #e2e7ee; }
+
+  /* Twin viewer */
+  .twin-note { color: var(--hmi-muted); }
+  .twin-jrow, .twin-cmd-speed, .twin-limits { color: var(--hmi-muted); }
+
+  .footer { color: var(--hmi-muted); }
 </style>
 </head>
 <body>
@@ -844,10 +1136,31 @@
     </div>
   </div>
 
-  <div class="layout-grid">
-    <div class="left-panel">
-      <div class="units" id="units"></div>
+  <div class="tabbar">
+    <button class="tab-btn active" id="tab-btn-motors" onclick="showTab('motors')">&#128295; Stepper Motors</button>
+    <button class="tab-btn" id="tab-btn-servos" onclick="showTab('servos')">&#9881;&#65039; Servo Motors</button>
+    <button class="tab-btn" id="tab-btn-program" onclick="showTab('program')">&#127916; Twin &amp; Playback</button>
+  </div>
 
+  <div class="tab-panel" id="tab-motors">
+    <div class="motors-layout">
+      <div class="units" id="units"></div>
+    </div>
+  </div>
+
+  <div class="tab-panel hidden" id="tab-servos">
+    <div class="motors-layout">
+      <div class="teach servo-card">
+        <div class="card-title">Servo Motors &middot; Axis 5 &amp; 6</div>
+        <div id="servo-controls" style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel hidden" id="tab-program">
+    <div class="program-layout">
       <div class="teach">
         <div class="card-title">Teach &amp; Playback</div>
 
@@ -889,9 +1202,7 @@
     </table>
         <div class="wp-empty" id="t-empty">No waypoints recorded yet. Use free-drive or the motor controls to position the arm, then Record.</div>
       </div>
-    </div>
 
-    <div class="right-panel">
       <div class="teach twin-card">
         <div class="card-title">3D Digital Twin</div>
         <div class="twin-toolbar">
@@ -930,13 +1241,6 @@
           Switch to <b>Command</b> to pose the model and drive the real arm (steppers + tilt).
           Press <b>Set home</b> with the arm at its zero pose to align the model.</div>
       </div>
-
-      <div class="teach servo-card">
-        <div class="card-title">Servo Motors &middot; Axis 5 &amp; 6</div>
-        <div id="servo-controls" style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
-          <!-- Populated by JS -->
-        </div>
-      </div>
     </div>
   </div>
 
@@ -945,10 +1249,10 @@
   <script>
     // Motor definitions: id, friendly name, wiring note, and gear reduction.
     const MOTORS = [
-      { id: 1, name: 'Joint 4 · Motor 1', gear: 5, limits: true, limitTitle: 'Shared travel limit (GPIO9)', wiring: 'EN GPIO17 · STP GPIO27 · DIR GPIO22 · addr 0xE0 · 5:1 planetary · end-stop GPIO9 (shared)' },
-      { id: 2, name: 'Joint 3 · Motor 2', gear: 5, limits: true, limitTitle: 'Shared travel limit (GPIO19)', wiring: 'EN GPIO2 · STP GPIO6 · DIR GPIO7 · addr 0xE1 · 5:1 planetary · end-stop GPIO19 (shared)' },
-      { id: 3, name: 'Joint 2 · Motor 3 (Pan)', gear: 1, limits: true, limitTitle: 'Shared travel limit (GPIO26)', wiring: 'EN GPIO23 · STP GPIO24 · DIR GPIO25 · addr 0xE2 · direct drive · end-stop GPIO26 (shared)' },
-      { id: 4, name: 'Joint 1 · Motor 4', gear: 1, wiring: 'EN GPIO16 · STP GPIO20 · DIR GPIO21 · addr 0xE3 · direct drive' },
+      { id: 1, name: 'Joint 4 · Motor 1', gear: 5, limits: true, limitTitle: 'Shared travel limit (GPIO9)', wiring: 'EN GPIO17 · STP GPIO27 · DIR GPIO22 · addr 0xE3 · 5:1 planetary · end-stop GPIO9 (shared)' },
+      { id: 2, name: 'Joint 3 · Motor 2', gear: 5, limits: true, limitTitle: 'Shared travel limit (GPIO19)', wiring: 'EN GPIO2 · STP GPIO6 · DIR GPIO7 · addr 0xE2 · 5:1 planetary · end-stop GPIO19 (shared)' },
+      { id: 3, name: 'Joint 2 · Motor 3 (Pan)', gear: 1, limits: true, limitTitle: 'Shared travel limit (GPIO26)', wiring: 'EN GPIO23 · STP GPIO24 · DIR GPIO25 · addr 0xE1 · direct drive · end-stop GPIO26 (shared)' },
+      { id: 4, name: 'Joint 1 · Motor 4', gear: 5, soft: true, wiring: 'EN GPIO16 · STP GPIO20 · DIR GPIO21 · addr 0xE0 · 5:1 planetary · encoder on motor shaft · software limits (encoder)' },
     ];
 
     const SERVOS = [
@@ -1419,6 +1723,35 @@ ${m.limits ? `
               <label>End stop</label>
               <span class="limit-pill" id="limit-${i}" title="${m.limitTitle || 'Travel limit input'}"><span class="ld"></span><span id="limit-text-${i}">open</span></span>
             </div>` : ''}
+${m.soft ? `
+            <div class="soft-limit" id="soft-wrap-${i}">
+              <div class="soft-limit-head">
+                <span class="soft-limit-title">&#128274; SOFTWARE TRAVEL LIMITS</span>
+                <span class="soft-pill" id="soft-pill-${i}"><span class="ld"></span><span id="soft-pill-text-${i}">off</span></span>
+              </div>
+              <div class="soft-limit-body">
+                <label class="soft-toggle">
+                  <input type="checkbox" id="soft-en-${i}" onchange="commitSoftLimits(${i})" />
+                  Enforce travel limits
+                </label>
+                <div class="soft-lim-row">
+                  <label>Lower</label>
+                  <input type="number" id="soft-min-${i}" class="num-input" step="1" placeholder="none"
+                         onchange="commitSoftLimits(${i})" />
+                  <button class="btn-soft" onclick="captureSoftLimit(${i}, 'min')">Set here</button>
+                </div>
+                <div class="soft-lim-row">
+                  <label>Upper</label>
+                  <input type="number" id="soft-max-${i}" class="num-input" step="1" placeholder="none"
+                         onchange="commitSoftLimits(${i})" />
+                  <button class="btn-soft" onclick="captureSoftLimit(${i}, 'max')">Set here</button>
+                </div>
+                <div class="soft-status-line">
+                  Position: <span id="soft-counts-${i}">--</span> counts
+                  &middot; <span id="soft-state-${i}">off</span>
+                </div>
+              </div>
+            </div>` : ''}
 
             <div class="control-row">
               <label>Speed</label>
@@ -1536,6 +1869,11 @@ ${m.limits ? `
 
     // ---------------- Per-motor state ----------------
     const ENC_WINDOW_MS = 30000;
+    // Motion gate: the closed-loop drivers micro-correct while idle, so the raw
+    // encoder jitters by a few counts even when the joint is still. Ignore that
+    // dither so the chart stays blank until the motor genuinely moves.
+    const MOVE_DEADBAND_DEG = 0.15;  // output-shaft deg between polls to count as "moving"
+    const MOVE_HOLD_MS = 1500;       // keep plotting briefly after motion stops
     const ENC_METRICS = {
       angle_deg:       { label: 'Shaft angle (°) · last 30 s',  unit: '°' },
       total_angle_deg: { label: 'Total angle (°) · last 30 s',  unit: '°' },
@@ -1560,10 +1898,15 @@ ${m.limits ? `
     function updateLive(i, s) {
       const state = el('motor-state', i);
       const lim = s.limit;
+      const soft = s.soft_limit;
       if (s.limit_stop) {
         const d = lim && lim.blocked_dir ? ' (' + lim.blocked_dir.toUpperCase() + ')' : '';
         state.textContent = 'END STOP' + d;
         state.style.color = '#ff7676';
+      } else if (soft && soft.blocked) {
+        const d = soft.blocked_dir ? ' (' + soft.blocked_dir.toUpperCase() + ')' : '';
+        state.textContent = 'SW LIMIT' + d;
+        state.style.color = '#ffb84a';
       } else if (s.stopping) {
         state.textContent = 'STOPPING';
         state.style.color = '#ffb84a';
@@ -1586,7 +1929,24 @@ ${m.limits ? `
             : 'open';
         }
       }
-      updateLivePolling(i, s.enabled || s.stopping || (lim && lim.pressed));
+      if (soft) updateSoftLimitLive(i, soft);
+      updateLivePolling(i, s.enabled || s.stopping || (lim && lim.pressed) || (soft && soft.blocked));
+    }
+
+    // Render the live software-limit status (position + armed/blocked badge)
+    // without touching the min/max inputs the user may be editing.
+    function updateSoftLimitLive(i, soft) {
+      const pill = document.getElementById(`soft-pill-${i}`);
+      const pillTxt = document.getElementById(`soft-pill-text-${i}`);
+      const counts = document.getElementById(`soft-counts-${i}`);
+      const stateEl = document.getElementById(`soft-state-${i}`);
+      if (counts) counts.textContent = (soft.counts === null || soft.counts === undefined) ? '--' : soft.counts;
+      let label = 'off', cls = '';
+      if (soft.blocked) { label = 'BLOCKED ' + (soft.blocked_dir ? soft.blocked_dir.toUpperCase() : ''); cls = 'blocked'; }
+      else if (soft.enabled) { label = 'armed'; cls = 'armed'; }
+      if (pill) { pill.classList.remove('armed', 'blocked'); if (cls) pill.classList.add(cls); }
+      if (pillTxt) pillTxt.textContent = label;
+      if (stateEl) stateEl.textContent = label;
     }
 
     function updateLivePolling(i, running) {
@@ -1706,6 +2066,65 @@ ${m.limits ? `
       postJSON(i, 'accel', { accel: parseInt(value, 10) });
     }
 
+    // ---------------- Software travel limits (encoder) ----------------
+    function applySoftLimitsConfig(i, cfg) {
+      if (!cfg) return;
+      const en = document.getElementById(`soft-en-${i}`);
+      const min = document.getElementById(`soft-min-${i}`);
+      const max = document.getElementById(`soft-max-${i}`);
+      if (en) en.checked = !!cfg.enabled;
+      if (min) min.value = (cfg.min === null || cfg.min === undefined) ? '' : cfg.min;
+      if (max) max.value = (cfg.max === null || cfg.max === undefined) ? '' : cfg.max;
+      updateSoftLimitLive(i, cfg);
+    }
+
+    async function loadSoftLimits(i) {
+      try {
+        const res = await fetch(`/motor/${i}/limits`);
+        applySoftLimitsConfig(i, await res.json());
+      } catch (e) { /* ignore */ }
+    }
+
+    function readSoftInput(id) {
+      const elm = document.getElementById(id);
+      if (!elm) return null;
+      const v = elm.value.trim();
+      return v === '' ? null : parseInt(v, 10);
+    }
+
+    async function commitSoftLimits(i) {
+      const body = {
+        enabled: !!document.getElementById(`soft-en-${i}`).checked,
+        min: readSoftInput(`soft-min-${i}`),
+        max: readSoftInput(`soft-max-${i}`),
+      };
+      try {
+        const res = await fetch(`/motor/${i}/limits`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        applySoftLimitsConfig(i, await res.json());
+      } catch (e) { /* ignore */ }
+    }
+
+    async function captureSoftLimit(i, which) {
+      const body = which === 'min' ? { set_min_here: true } : { set_max_here: true };
+      try {
+        const res = await fetch(`/motor/${i}/limits`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const cfg = await res.json();
+        if (cfg && cfg.error) {
+          if (typeof setStatus === 'function') setStatus('limit capture failed: ' + cfg.error, false);
+          return;
+        }
+        applySoftLimitsConfig(i, cfg);
+      } catch (e) { /* ignore */ }
+    }
+
     // ---------------- Encoder (always live) ----------------
     function resetTurns(i) {
       units[i].turnsZero = units[i].lastRevolutions;
@@ -1758,12 +2177,22 @@ ${m.limits ? `
         `translate(-50%, -100%) rotate(${angle}deg)`;
 
       const now = Date.now();
-      u.encSamples.push({
-        t: now,
-        angle_deg: angle,
-        total_angle_deg: totalAngle,
-        revolutions: revs,
-      });
+      // Only record samples while the joint is actually moving; idle dither is
+      // discarded so the chart doesn't fill with noise.
+      if (u.lastTotalAngle === undefined) u.lastTotalAngle = totalAngle;
+      if (Math.abs(totalAngle - u.lastTotalAngle) > MOVE_DEADBAND_DEG) {
+        u.movingUntil = now + MOVE_HOLD_MS;
+      }
+      u.lastTotalAngle = totalAngle;
+      if (u.movingUntil && now < u.movingUntil) {
+        u.encSamples.push({
+          t: now,
+          angle_deg: angle,
+          total_angle_deg: totalAngle,
+          revolutions: revs,
+        });
+      }
+      // Always age out old samples so the chart clears once motion stops.
       while (u.encSamples.length && now - u.encSamples[0].t > ENC_WINDOW_MS) {
         u.encSamples.shift();
       }
@@ -1789,7 +2218,7 @@ ${m.limits ? `
         ctx.fillStyle = '#5a6178';
         ctx.font = '14px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('Collecting data…', W / 2, H / 2);
+        ctx.fillText('Waiting for motion…', W / 2, H / 2);
         return;
       }
 
@@ -1846,6 +2275,18 @@ ${m.limits ? `
     }
 
     // ---------------- Init ----------------
+    function showTab(name) {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      const panel = document.getElementById('tab-' + name);
+      const btn = document.getElementById('tab-btn-' + name);
+      if (panel) panel.classList.remove('hidden');
+      if (btn) btn.classList.add('active');
+      try { localStorage.setItem('activeTab', name); } catch (e) { /* ignore */ }
+      // Let the 3D twin / charts re-fit once their panel becomes visible.
+      window.dispatchEvent(new Event('resize'));
+    }
+
     const container = document.getElementById('units');
     container.innerHTML = MOTORS.map(unitHTML).join('');
     MOTORS.forEach(m => {
@@ -1869,7 +2310,18 @@ ${m.limits ? `
       if (m.limits) {
         setInterval(() => { if (units[m.id].liveTimer === null) pollLive(m.id); }, 600);
       }
+      // Software-limit motors: load saved config and keep the badge live.
+      if (m.soft) {
+        loadSoftLimits(m.id);
+        setInterval(() => { if (units[m.id].liveTimer === null) pollLive(m.id); }, 600);
+      }
     });
+
+    // Restore the last-used tab (defaults to Motor Control).
+    try {
+      const savedTab = localStorage.getItem('activeTab');
+      if (savedTab) showTab(savedTab);
+    } catch (e) { /* ignore */ }
 
     // ---------------- Pi 5 health ----------------
     let healthVisible = false;

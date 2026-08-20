@@ -406,14 +406,14 @@ EN4_PIN = 16
 STP4_PIN = 20
 DIR4_PIN = 21
 
-# Gearbox reduction (motor revs : output revs). Motors 1 and 2 each run through a
-# 5:1 planetary reducer, so their output shafts turn 5x slower than the motor
-# shaft (and the encoder, which sits on the motor shaft). Motors 3 and 4 default
-# to direct-drive (1:1); change if they have reducers.
+# Gearbox reduction (motor revs : output revs). Motors 1, 2 and 4 each run
+# through a 5:1 planetary reducer, so their output shafts turn 5x slower than
+# the motor shaft (and the encoder, which sits on the BACK of the motor, on the
+# motor shaft). Motor 3 is direct-drive (1:1); change if it gains a reducer.
 MOTOR1_GEAR_RATIO = 5.0
 MOTOR2_GEAR_RATIO = 5.0
 MOTOR3_GEAR_RATIO = 1.0
-MOTOR4_GEAR_RATIO = 1.0
+MOTOR4_GEAR_RATIO = 5.0
 
 # Motor 1/2/3 end-stop limit switches. Each motor's two travel-limit switches
 # share a SINGLE GPIO line: M1 -> GPIO 9, M2 -> GPIO 19, M3 -> GPIO 26. Each
@@ -488,6 +488,20 @@ POS_SAFE_SPS = 400             # speed cap until move direction is confirmed
 PROGRAMS_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "programs"
 )
+
+# ---------------------------------------------------------------------------
+# Software (encoder-based) travel limits
+#   For joints without a physical end-stop, a tunable upper/lower encoder-count
+#   band stops the joint before it drives past its safe range. Tuned from the
+#   UI and persisted to config/soft_limits.json so they survive a restart.
+# ---------------------------------------------------------------------------
+SOFT_LIMIT_READ_DT = 0.06       # how often the worker samples the encoder (s)
+SOFT_LIMIT_LEARN_COUNTS = 40    # min count change to learn direction polarity
+_UNSET = object()               # sentinel: "argument not provided"
+MOTOR_CONFIG_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "config"
+)
+SOFT_LIMITS_FILE = os.path.join(MOTOR_CONFIG_DIR, "soft_limits.json")
 
 
 def _clamp(value, lo, hi):
@@ -587,6 +601,21 @@ class StepperMotor:
         # so we must handle it ourselves: active-LOW → triggered when value=0.
         self._cw_active_low  = bool(_cw_al)
         self._ccw_active_low = bool(_ccw_al)
+        # Software (encoder-based) travel limits. counts_provider is a callable
+        # returning the joint's current absolute encoder count (wired up after
+        # the encoders are created). soft_limit_min/max are the lower/upper
+        # bounds in encoder counts; either may be None to leave that side open.
+        # _soft_polarity is +1 if commanding "cw" increases the count, -1 if it
+        # decreases — learned automatically from the first motion.
+        self.counts_provider = None
+        self.soft_limit_enabled = False
+        self.soft_limit_min = None
+        self.soft_limit_max = None
+        self.soft_limit_stop = False
+        self.soft_counts = None
+        self._soft_polarity = 1
+        self._soft_blocked_dir = None
+        self._soft_last_read = 0.0
         self._stop = threading.Event()
         self._soft_stop = threading.Event()
         # When set, the worker keeps the coils energized but emits no pulses
@@ -700,7 +729,57 @@ class StepperMotor:
             if limited:
                 self.current_speed = 0.0
 
-            target = 0.0 if (held or soft or limited) else float(self.speed)
+            # Software (encoder-based) travel limits. For joints without a
+            # physical end-stop, an upper/lower encoder-count band prevents the
+            # joint from driving past its tuned range. Only the direction that
+            # pushes further out of range is blocked; the opposite direction is
+            # always allowed so the joint can back away from the limit.
+            soft_limited = False
+            if self.soft_limit_enabled and self.counts_provider is not None:
+                moving = self.current_speed > 0 and not held and not soft
+                now_s = time.monotonic()
+                if now_s - self._soft_last_read >= SOFT_LIMIT_READ_DT:
+                    self._soft_last_read = now_s
+                    try:
+                        c = self.counts_provider()
+                    except Exception:
+                        c = None
+                    if isinstance(c, (int, float)):
+                        c = int(c)
+                        # Learn which command direction increases the count so
+                        # the correct end of travel is blocked regardless of
+                        # how this motor happens to be wired.
+                        if self.soft_counts is not None and moving:
+                            delta = c - self.soft_counts
+                            if abs(delta) >= SOFT_LIMIT_LEARN_COUNTS:
+                                sign = 1 if delta > 0 else -1
+                                self._soft_polarity = (
+                                    sign if self.direction == "cw" else -sign
+                                )
+                        self.soft_counts = c
+                c = self.soft_counts
+                if c is not None:
+                    inc_dir = "cw" if self._soft_polarity >= 0 else "ccw"
+                    dec_dir = "ccw" if inc_dir == "cw" else "cw"
+                    at_max = (self.soft_limit_max is not None
+                              and c >= self.soft_limit_max)
+                    at_min = (self.soft_limit_min is not None
+                              and c <= self.soft_limit_min)
+                    if at_max and self.direction == inc_dir:
+                        soft_limited = True
+                        self._soft_blocked_dir = inc_dir
+                    elif at_min and self.direction == dec_dir:
+                        soft_limited = True
+                        self._soft_blocked_dir = dec_dir
+                    else:
+                        self._soft_blocked_dir = None
+            else:
+                self._soft_blocked_dir = None
+            self.soft_limit_stop = soft_limited
+            if soft_limited:
+                self.current_speed = 0.0
+
+            target = 0.0 if (held or soft or limited or soft_limited) else float(self.speed)
 
             step_accel = self.accel * dt
             if self.current_speed < target:
@@ -876,6 +955,41 @@ class StepperMotor:
             self.accel = accel
         return accel
 
+    def set_soft_limits(self, enabled=_UNSET, min_counts=_UNSET, max_counts=_UNSET):
+        """Configure encoder-based software travel limits.
+
+        Pass ``_UNSET`` (the default) to leave a field unchanged. ``min_counts``
+        / ``max_counts`` may be ``None`` to clear that bound. The bounds are
+        kept ordered so ``min`` is never greater than ``max``.
+        """
+        with self._lock:
+            if enabled is not _UNSET:
+                self.soft_limit_enabled = bool(enabled)
+            if min_counts is not _UNSET:
+                self.soft_limit_min = None if min_counts is None else int(min_counts)
+            if max_counts is not _UNSET:
+                self.soft_limit_max = None if max_counts is None else int(max_counts)
+            if (self.soft_limit_min is not None
+                    and self.soft_limit_max is not None
+                    and self.soft_limit_min > self.soft_limit_max):
+                self.soft_limit_min, self.soft_limit_max = (
+                    self.soft_limit_max, self.soft_limit_min
+                )
+        return self.soft_limit_config()
+
+    def soft_limit_config(self):
+        """Current software-limit configuration and live blocked state."""
+        return {
+            "supported": self.counts_provider is not None,
+            "enabled": self.soft_limit_enabled,
+            "min": self.soft_limit_min,
+            "max": self.soft_limit_max,
+            "counts": self.soft_counts,
+            "blocked": self.soft_limit_stop,
+            "blocked_dir": self._soft_blocked_dir,
+            "polarity": self._soft_polarity,
+        }
+
     def _rpm(self):
         # Reported as OUTPUT-shaft RPM (motor RPM divided by the reduction).
         return round(self.speed * 60.0 / self._steps_per_rev() / self.gear_ratio, 2)
@@ -964,6 +1078,7 @@ class StepperMotor:
             "gear_ratio": self.gear_ratio,
             "limit_stop": self.limit_stop,
             "limit": self._limit_state(),
+            "soft_limit": self.soft_limit_config(),
             "gpio": GPIO_AVAILABLE,
         }
 
@@ -1155,10 +1270,10 @@ if HW_PWM_AVAILABLE and HardwarePWM is not None:
 # ---------------------------------------------------------------------------
 SERIAL_PORT = os.environ.get("SERVO_UART", "/dev/serial0")
 SERIAL_BAUD = int(os.environ.get("SERVO_BAUD", "9600"))
-MOTOR1_ADDR = int(os.environ.get("SERVO_ADDR", "0xe0"), 0)
-MOTOR2_ADDR = int(os.environ.get("SERVO_ADDR2", "0xe1"), 0)
-MOTOR3_ADDR = int(os.environ.get("SERVO_ADDR3", "0xe2"), 0)
-MOTOR4_ADDR = int(os.environ.get("SERVO_ADDR4", "0xe3"), 0)
+MOTOR1_ADDR = int(os.environ.get("SERVO_ADDR",  "0xe3"), 0)
+MOTOR2_ADDR = int(os.environ.get("SERVO_ADDR2", "0xe2"), 0)
+MOTOR3_ADDR = int(os.environ.get("SERVO_ADDR3", "0xe1"), 0)
+MOTOR4_ADDR = int(os.environ.get("SERVO_ADDR4", "0xe0"), 0)
 ENCODER_COUNTS_PER_REV = 65536  # 0~0xFFFF maps to 0~360 degrees
 READ_ENCODER_CMD = 0x30
 
@@ -1264,6 +1379,60 @@ def get_motor(mid):
 
 def get_encoder(mid):
     return encoders.get(mid)
+
+
+# ---- Software travel-limit persistence ---------------------------------
+def _load_soft_limits():
+    """Restore per-motor software limits from config/soft_limits.json."""
+    try:
+        with open(SOFT_LIMITS_FILE) as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return
+    for mid_str, cfg in (data or {}).items():
+        try:
+            mid = int(mid_str)
+        except (TypeError, ValueError):
+            continue
+        motor = motors.get(mid)
+        if motor is None or not isinstance(cfg, dict):
+            continue
+        try:
+            motor.set_soft_limits(
+                enabled=cfg.get("enabled", False),
+                min_counts=cfg.get("min"),
+                max_counts=cfg.get("max"),
+            )
+        except (TypeError, ValueError):
+            continue
+
+
+def _save_soft_limits():
+    """Persist per-motor software limits to config/soft_limits.json."""
+    os.makedirs(MOTOR_CONFIG_DIR, exist_ok=True)
+    data = {
+        str(mid): {
+            "enabled": m.soft_limit_enabled,
+            "min": m.soft_limit_min,
+            "max": m.soft_limit_max,
+        }
+        for mid, m in motors.items()
+    }
+    tmp = SOFT_LIMITS_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, SOFT_LIMITS_FILE)
+
+
+# Give each motor a way to read its own absolute encoder count, then restore
+# any saved software travel limits.
+for _mid, _motor in motors.items():
+    _enc = encoders.get(_mid)
+    if _enc is not None:
+        _motor.counts_provider = (
+            lambda e=_enc: (e.read() or {}).get("counts")
+        )
+_load_soft_limits()
 
 
 # ---- Digital twin joint-state polling ----------------------------------
@@ -2627,7 +2796,7 @@ class EmotionRings:
         if WS281X_AVAILABLE:
             try:
                 self._strip = PixelStrip(
-                    RING_LED_COUNT,
+                    RING_LED_COUNT * 2,
                     18,
                     800000,
                     10,
@@ -2763,19 +2932,22 @@ class EmotionRings:
     def _apply(self, ring1_colors, ring2_colors):
         if not self.available:
             return
+        # Rings are chained in series on one data line: ring 1 occupies LEDs
+        # 0..RING_LED_COUNT-1, ring 2 the next block. Send both so each ring
+        # animates independently.
+        combined = list(ring1_colors) + list(ring2_colors)
         if self.backend == "spi":
-            self._spi_show(ring1_colors)
+            self._spi_show(combined)
             return
         if self.backend == "ws281x":
             if not self._strip:
                 return
-            for i in range(RING_LED_COUNT):
-                c1 = ring1_colors[i]
-                self._strip.setPixelColor(i, Color(c1[0], c1[1], c1[2]))
+            for i, c in enumerate(combined):
+                self._strip.setPixelColor(i, Color(c[0], c[1], c[2]))
             self._strip.show()
             return
         if self.backend == "pigpio":
-            self._pigpio_show(ring1_colors)
+            self._pigpio_show(combined)
 
     def _blackout(self):
         off = [(0, 0, 0)] * RING_LED_COUNT
@@ -3459,6 +3631,48 @@ def motor_encoder(mid):
     if enc is None:
         return jsonify({"error": "unknown motor"}), 404
     return jsonify(enc.read())
+
+
+@app.route("/motor/<int:mid>/limits", methods=["GET", "POST"])
+def motor_limits(mid):
+    """Get or set a motor's encoder-based software travel limits.
+
+    POST body accepts any of:
+      enabled       (bool)  turn enforcement on/off
+      min / max     (int or null)  lower/upper bound in encoder counts
+      set_min_here / set_max_here (truthy)  capture the current encoder
+                    position as that bound
+    """
+    motor = get_motor(mid)
+    if motor is None:
+        return jsonify({"error": "unknown motor"}), 404
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        kw = {}
+        if "enabled" in data:
+            kw["enabled"] = _as_bool(data.get("enabled"), default=False)
+        # "Set here" capture reads the live encoder position once.
+        cur = None
+        if data.get("set_min_here") or data.get("set_max_here"):
+            enc = get_encoder(mid)
+            reading = enc.read() if enc else {}
+            cur = reading.get("counts")
+            if cur is None:
+                return jsonify({"error": "encoder read failed"}), 502
+        if data.get("set_min_here"):
+            kw["min_counts"] = int(cur)
+        elif "min" in data:
+            kw["min_counts"] = None if data["min"] is None else int(data["min"])
+        if data.get("set_max_here"):
+            kw["max_counts"] = int(cur)
+        elif "max" in data:
+            kw["max_counts"] = None if data["max"] is None else int(data["max"])
+        try:
+            motor.set_soft_limits(**kw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "min/max must be integers"}), 400
+        _save_soft_limits()
+    return jsonify(motor.soft_limit_config())
 
 
 # -- Servo motors (axis 5 & 6) -------------------------------------------------
