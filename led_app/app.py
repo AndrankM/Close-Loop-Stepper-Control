@@ -434,6 +434,11 @@ SERVO5_PIN = 12  # physical pin 32 -> PWM channel 0
 SERVO6_PIN = 13  # physical pin 33 -> PWM channel 1
 SERVO5_CHANNEL = 0
 SERVO6_CHANNEL = 1
+# Axis 6 is the gripper. It defaults to "hold off" so it relaxes (stops
+# pulsing) shortly after reaching a position instead of continuously driving
+# torque. This prevents the analog servo from hunting/twitching when it is
+# commanded against the closed-grip mechanical bind.
+GRIPPER_SERVO_ID = 6
 # RP1 PWM0 (hardware address 1f00098000) drives GPIO 12/13 on the Pi 5. The
 # sysfs pwmchip index for this block is not fixed, so it is auto-detected at
 # runtime; this value is only a fallback if detection fails.
@@ -1241,8 +1246,11 @@ if HW_PWM_AVAILABLE and HardwarePWM is not None:
             servo_channels[_sid] = _chan
             servo_angles[_sid] = 0.0
             servo_enabled[_sid] = True
-            servo_hold[_sid] = True
-            servo_detach_delay[_sid] = 0.25
+            # The gripper relaxes after moving (see GRIPPER_SERVO_ID note) so
+            # it does not hunt against the closed-grip stop; other axes hold.
+            _is_gripper = _sid == GRIPPER_SERVO_ID
+            servo_hold[_sid] = not _is_gripper
+            servo_detach_delay[_sid] = 0.4 if _is_gripper else 0.25
             servo_detach_timers[_sid] = None
         except Exception as _e:
             # PWM chip/channel unavailable (overlay not enabled or in use).
