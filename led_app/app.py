@@ -439,6 +439,7 @@ SERVO6_CHANNEL = 1
 # torque. This prevents the analog servo from hunting/twitching when it is
 # commanded against the closed-grip mechanical bind.
 GRIPPER_SERVO_ID = 6
+AXIS5_SERVO_ID = 5
 # RP1 PWM0 (hardware address 1f00098000) drives GPIO 12/13 on the Pi 5. The
 # sysfs pwmchip index for this block is not fixed, so it is auto-detected at
 # runtime; this value is only a fallback if detection fails.
@@ -1166,6 +1167,15 @@ def _set_servo_angle_smooth(sid, start_angle, target_angle):
         current = nxt
         time.sleep(AXIS5_SMOOTH_STEP_SEC)
     _set_servo_angle_hw(sid, target)
+
+
+def _servo_uses_smooth(sid):
+    """Servos that slew in small steps rather than jumping to the target.
+
+    A single large instant duty change stalls a cheap analog servo (it buzzes
+    and stops); feeding intermediate steps mimics a slider drag, which works.
+    """
+    return sid in (AXIS5_SERVO_ID, GRIPPER_SERVO_ID)
 
 
 def _cancel_servo_detach(sid):
@@ -3703,7 +3713,7 @@ def servo_angle(sid):
             prev = servo_angles.get(sid)
             # Ignore tiny request jitter from UI/network noise.
             if prev is None or abs(prev - angle) >= 0.5:
-                if sid == 5 and prev is not None:
+                if _servo_uses_smooth(sid) and prev is not None:
                     _set_servo_angle_smooth(sid, prev, angle)
                 else:
                     _set_servo_angle_hw(sid, angle)
@@ -3741,7 +3751,7 @@ def servo_power(sid):
         if on:
             angle = servo_angles.get(sid, 0.0)
             prev = servo_angles.get(sid, angle)
-            if sid == 5 and prev is not None:
+            if _servo_uses_smooth(sid) and prev is not None:
                 _set_servo_angle_smooth(sid, prev, angle)
             else:
                 _set_servo_angle_hw(sid, angle)
@@ -3787,7 +3797,7 @@ def servo_hold_mode(sid):
             _cancel_servo_detach(sid)
             angle = servo_angles.get(sid, 0.0)
             prev = servo_angles.get(sid, angle)
-            if sid == 5 and prev is not None:
+            if _servo_uses_smooth(sid) and prev is not None:
                 _set_servo_angle_smooth(sid, prev, angle)
             else:
                 _set_servo_angle_hw(sid, angle)
