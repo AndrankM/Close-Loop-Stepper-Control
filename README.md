@@ -32,6 +32,11 @@ shaft.
   Limits stop motion immediately in the blocked direction while still allowing jog
   away from the stop. A live end-stop indicator and an `END STOP` state appear on
   the motor card.
+- **First-boot homing &amp; centering** — one click homes all four joints at once and
+  parks each at the centre of its travel (the standing/rest pose). Axes 1–3 seek
+  both end-stops and stop exactly halfway between them; axis 4 (no switch) centres
+  to the middle of its software limits. Fully encoder-based, so the gear reducers
+  are irrelevant to finding centre (see [Homing &amp; centering](#homing--centering)).
 - **Teach &amp; playback** — record encoder poses and play them back as coordinated
   motion, Dobot-style (see [Teach &amp; playback](#teach--playback)).
 - **Raspberry Pi 5 health monitoring** — a header temperature chip plus a
@@ -268,6 +273,14 @@ Routes are parameterized by motor id (`<mid>` = `1`–`4`).
 | POST   | `/programs/<name>`   | Save a program (JSON body)                           |
 | DELETE | `/programs/<name>`   | Delete a program                                     |
 
+### Homing &amp; centering API
+
+| Method | Route                | Description                                          |
+| ------ | -------------------- | ---------------------------------------------------- |
+| GET    | `/arm/calibration`   | Homing state JSON (per-joint `homed`, measured `joint_span`, centre `home_counts`, live `activity`, `homing_cfg`) |
+| POST   | `/arm/home`          | Home **all** joints in parallel (`{}`), or a single joint (`{"joint": 1-4}`) |
+| POST   | `/arm/home/config`   | Update a joint's homing settings (`{"joint", "dir", "seek_sps", "creep_sps", "backoff"}`) |
+
 ### Encoder response
 
 ```json
@@ -317,6 +330,43 @@ replaying them as coordinated motion, similar to Dobot Studio.
 Closed-loop tuning constants live in `app.py`: `POS_TOLERANCE_COUNTS` (stop band),
 `POS_KP` (proportional gain), `POS_TIMEOUT_S`, `POS_APPROACH_MIN_SPS`, and
 `POS_SAFE_SPS` (speed cap until direction is confirmed).
+
+## Homing &amp; centering
+
+On power-up the arm is in an unknown position (the SERVO42C multi-turn count resets
+each boot). The **Homing &amp; Centering** panel brings every joint to a known,
+repeatable **centre** pose \u2014 which is also the standing/rest pose, so no separate
+"ready position" needs to be taught.
+
+- **One button, all joints** \u2014 a green **HOME ALL (CENTER)** button in the header
+  (next to **STOP ALL MOTORS**), and one in the panel, home **all four joints at the
+  same time**, each in its own thread. Per-axis **Home Axis N** buttons home a single
+  joint. Every action asks you to clear the workspace first, and **Stop** / the
+  emergency stop aborts a homing run instantly.
+- **Axes 1\u20133 \u2014 two-sided centring** \u2014 each joint seeks the switch on one side
+  (fast approach \u2192 back off \u2192 slow creep for a repeatable trip), crosses to the
+  opposite switch and does the same, then parks **exactly halfway between the two**.
+  Because both ends are measured on the encoder, the result is independent of the
+  gear reducers.
+- **Axis 4 \u2014 no switch** \u2014 it has no end-stop, so it centres to the **middle of its
+  software limits** (set the min/max on the Motors tab). It briefly probes to learn
+  which command direction raises the encoder count, then drives to the midpoint.
+- **Reaches the switch, never a timer** \u2014 the seek keeps driving as long as the
+  joint is still making encoder progress and only gives up if it **stalls** (no
+  motion for a few seconds \u2014 a hard stop, dead switch, or wrong direction), with a
+  generous outer safety cap.
+- **No oscillation** \u2014 the centre move learns the count polarity from the two
+  measured ends and approaches the centre in a **single direction** (fast run, then
+  a slow creep that stops the instant the encoder reaches centre), so the joint
+  settles without hunting.
+- **Soft limits are bypassed during the seek** (homing is what establishes the
+  reference those limits are measured from) and restored afterwards.
+
+Per-joint homing settings \u2014 start direction, seek speed, creep speed and back-off
+distance \u2014 are editable in the panel's **Homing settings (advanced)** section and
+persisted to `led_app/config/calibration.json`. Tuning constants live in `app.py`:
+`HOME_SEEK_SPS`, `HOME_CREEP_SPS`, `HOME_BACKOFF_COUNTS`, `HOME_PROGRESS_COUNTS`
+(min counts that count as \u201cmoving\u201d), `HOME_STALL_TIMEOUT_S`, and `HOME_SEEK_MAX_S`.
 
 ## Raspberry Pi 5 health
 
@@ -390,6 +440,7 @@ led_app/
     emotion.html       Emotion detection page (live feed, emotion bars)
   models/              YuNet + FER+ ONNX models (downloaded by scripts/setup_vision.sh, git-ignored)
   programs/            Saved teach/playback programs (JSON, created at runtime)
+  config/              Runtime config: soft_limits.json + calibration.json (homing settings), created at runtime
   speedtest.py         Measures actual motor speed via the encoder
   redeploy.ps1         Deploy script (scp + restart service over SSH)
 blink_led.py           Standalone onboard LED blink example
