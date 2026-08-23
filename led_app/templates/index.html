@@ -56,6 +56,22 @@
       z-index: 1000;
       margin-top: 0;
     }
+    /* Header "home all" button, sits next to the emergency stop */
+    .btn-home-all-top {
+      background: #166534;
+      color: #fff;
+      border: 2px solid #22c55e;
+      border-radius: 10px;
+      padding: 0.75rem 1.6rem;
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: background .12s, transform .05s;
+    }
+    .btn-home-all-top:hover { background: #15803d; }
+    .btn-home-all-top:active { transform: scale(0.97); }
+    .btn-home-all-top:disabled { opacity: 0.5; cursor: default; }
 
     .cpu-temp {
       font-size: 0.8rem;
@@ -825,6 +841,49 @@
     .program-layout .twin-card { position: static; }
   }
 
+  /* ---- Homing / ready-position calibration card ---- */
+  .calib-joints {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.6rem;
+    margin: 0.6rem 0;
+  }
+  .calib-joint {
+    display: flex; flex-direction: column; gap: 0.35rem;
+    padding: 0.6rem 0.7rem; border-radius: 8px;
+    background: var(--hmi-panel2, #212430);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .calib-joint .cj-head { display: flex; align-items: center; justify-content: space-between; }
+  .calib-joint .cj-name { font-weight: 600; }
+  .calib-badge {
+    font-size: 0.72rem; font-weight: 700; padding: 0.12rem 0.5rem;
+    border-radius: 999px; text-transform: uppercase; letter-spacing: 0.03em;
+  }
+  .calib-badge.unhomed { background: #5a2a2a; color: #ffb4b4; }
+  .calib-badge.homing  { background: #5a4a1e; color: #ffe08a; }
+  .calib-badge.homed   { background: #204d2e; color: #86efac; }
+  .calib-joint .cj-info { font-size: 0.78rem; opacity: 0.75; }
+  .calib-m4 {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem;
+    padding: 0.55rem 0.7rem; border-radius: 8px; margin-bottom: 0.5rem;
+    background: var(--hmi-panel2, #212430);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .calib-m4-info { font-size: 0.8rem; opacity: 0.8; margin-right: auto; }
+  .calib-adv summary { cursor: pointer; font-size: 0.85rem; opacity: 0.85; }
+  .calib-cfg {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 0.6rem; margin-top: 0.6rem;
+  }
+  .calib-cfg .cc-joint {
+    padding: 0.5rem 0.6rem; border-radius: 8px;
+    background: var(--hmi-panel2, #212430);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .calib-cfg label { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; font-size: 0.78rem; margin: 0.25rem 0; }
+  .calib-cfg input, .calib-cfg select { width: 110px; }
+
   /* =====================================================================
      OPTION 2 — Industrial HMI light theme override
      Appended last so it cascades over the original dark rules without
@@ -1014,7 +1073,10 @@
   <div class="page-header">
     <h1>Closed-Loop Stepper Control</h1>
     <div class="sub">4&times; NEMA 17 &middot; MKS SERVO42C</div>
-    <button class="btn-estop-all" id="estop-all" onclick="estopAll()">&#9888; STOP ALL MOTORS</button>
+    <div style="margin-top:0.9rem; display:flex; gap:0.7rem; justify-content:center; align-items:center; flex-wrap:wrap;">
+      <button class="btn-estop-all" style="margin-top:0;" id="estop-all" onclick="estopAll()">&#9888; STOP ALL MOTORS</button>
+      <button class="btn-home-all-top" id="cal-home-all-top" onclick="homeAllCenter()">&#9654; HOME ALL (CENTER)</button>
+    </div>
     <div style="margin-top:0.6rem; display:flex; gap:0.5rem; justify-content:center; align-items:center; flex-wrap:wrap;">
       <a href="/emotion" style="color:#7dd3fc;font-size:0.8rem;text-decoration:none;border:1px solid #2a3650;border-radius:8px;padding:0.3rem 0.7rem;display:inline-block;">&#128247; Emotion detection</a>
       <span class="cam-chip" id="cam-chip" onclick="toggleCamera()" title="Show the head camera with live emotion detection">&#128247; Camera</span>
@@ -1161,6 +1223,23 @@
 
   <div class="tab-panel hidden" id="tab-program">
     <div class="program-layout">
+      <div class="teach calib-card" style="grid-column: 1 / -1;">
+        <div class="card-title">Homing &amp; Centering</div>
+        <div class="teach-toolbar">
+          <button class="btn-t primary" id="cal-home-all" title="Home all four joints at once; each finds its limits and parks at the centre">&#9654; Home All Joints (center)</button>
+          <button class="btn-t danger" id="cal-stop">&#9632; Stop</button>
+        </div>
+        <div class="teach-status" id="cal-status"><span class="dot"></span><span id="cal-status-text">not homed</span></div>
+        <div class="calib-joints" id="cal-joints"></div>
+        <div class="calib-m4" id="cal-m4">
+          <span><strong>Axis 4</strong> &middot; centres to the middle of its software limits</span>
+          <span class="calib-m4-info" id="cal-m4-info">&mdash;</span>
+        </div>
+        <details class="calib-adv">
+          <summary>Homing settings (advanced)</summary>
+          <div class="calib-cfg" id="cal-cfg"></div>
+        </details>
+      </div>
       <div class="teach">
         <div class="card-title">Teach &amp; Playback</div>
 
@@ -2036,6 +2115,17 @@ ${m.soft ? `
       // Refresh every panel so they show STOPPED.
       MOTORS.forEach(m => fetchMotor(m.id));
       if (typeof setStatus === 'function') setStatus('emergency stop — all motors halted', false);
+    }
+
+    // ---- Home all four joints (centre) from the header ----
+    async function homeAllCenter() {
+      if (!confirm('CLEAR THE WORKSPACE.\n\nAll four joints will home at the same time — each sweeps to its limits and parks at the centre. Continue?')) return;
+      try {
+        const r = await fetch('/arm/home', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        if (r.status === 409) { alert('Busy or currently playing.'); return; }
+      } catch (e) { /* ignore */ }
+      if (typeof showTab === 'function') showTab('program');
+      if (typeof startCalPolling === 'function') startCalPolling();
     }
 
     // ---- Momentary jog: hold to move, release to stop ----
@@ -2996,6 +3086,121 @@ ${m.soft ? `
     $('t-load').addEventListener('click', loadProgram);
     $('t-delete').addEventListener('click', deleteProgram);
     $('t-speed').addEventListener('input', e => { $('t-speed-val').textContent = e.target.value + '%'; });
+
+    // ---- Homing & centering ----
+    const CAL_JOINTS = [1, 2, 3];
+    let calPollTimer = null;
+
+    function renderCalibration(s) {
+      const homed = s.homed || {};
+      const span = s.joint_span || {};
+      $('cal-joints').innerHTML = CAL_JOINTS.map(j => {
+        const isHomed = !!homed[String(j)];
+        const sp = span[String(j)];
+        const range = (sp && sp.length === 2) ? `range ${sp[0]}\u2026${sp[1]} cts` : 'range \u2014';
+        return `<div class="calib-joint">
+          <div class="cj-head"><span class="cj-name">Axis ${j}</span>
+            <span class="calib-badge ${isHomed ? 'homed' : 'unhomed'}">${isHomed ? 'homed' : 'unhomed'}</span></div>
+          <div class="cj-info">centres between switches &middot; ${range}</div>
+          <button class="btn-t" data-home="${j}">Home Axis ${j}</button>
+        </div>`;
+      }).join('');
+
+      const m4Homed = !!homed['4'];
+      const sp4 = span['4'];
+      const m4Range = (sp4 && sp4.length === 2) ? ` (limits ${sp4[0]}\u2026${sp4[1]} cts)` : '';
+      $('cal-m4-info').innerHTML =
+        `<span class="calib-badge ${m4Homed ? 'homed' : 'unhomed'}">${m4Homed ? 'centered' : 'not homed'}</span>` +
+        `<span style="margin:0 .5rem;">${m4Range || 'set soft limits in the Motors tab'}</span>` +
+        `<button class="btn-t" data-home="4">Home Axis 4</button>`;
+
+      const cfg = s.homing_cfg || {};
+      $('cal-cfg').innerHTML = CAL_JOINTS.map(j => {
+        const c = cfg[String(j)] || {};
+        return `<div class="cc-joint"><div style="font-weight:600;margin-bottom:.3rem;">Axis ${j}</div>
+          <label>Start dir <select data-cfg="dir" data-j="${j}">
+            <option value="cw"${c.dir === 'cw' ? ' selected' : ''}>CW</option>
+            <option value="ccw"${c.dir === 'ccw' ? ' selected' : ''}>CCW</option></select></label>
+          <label>Seek sps <input type="number" data-cfg="seek_sps" data-j="${j}" value="${c.seek_sps}"></label>
+          <label>Creep sps <input type="number" data-cfg="creep_sps" data-j="${j}" value="${c.creep_sps}"></label>
+          <label>Back-off cts <input type="number" data-cfg="backoff" data-j="${j}" value="${c.backoff}"></label>
+        </div>`;
+      }).join('');
+
+      const allHomed = [1, 2, 3, 4].every(j => homed[String(j)]);
+      $('cal-status-text').textContent = s.activity || (allHomed ? 'all centered' : 'not homed');
+      $('cal-status').classList.toggle('playing', !!s.busy);
+    }
+
+    async function fetchCalibration() {
+      try { const r = await fetch('/arm/calibration'); renderCalibration(await r.json()); } catch (e) {}
+    }
+
+    function startCalPolling() {
+      if (calPollTimer) return;
+      const tick = async () => {
+        let busy = false;
+        try {
+          const r = await fetch('/arm/calibration');
+          const s = await r.json();
+          renderCalibration(s);
+          busy = s.busy;
+        } catch (e) {}
+        calPollTimer = busy ? setTimeout(tick, 400) : null;
+      };
+      calPollTimer = setTimeout(tick, 150);
+    }
+
+    async function calPost(url, body) {
+      return fetch(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+    }
+
+    $('cal-home-all').addEventListener('click', async () => {
+      if (!confirm('CLEAR THE WORKSPACE.\n\nAll four joints will home at the same time \u2014 each sweeps to its limits and parks at the centre. Continue?')) return;
+      if (freedriveOn) await toggleFreedrive();
+      const r = await calPost('/arm/home', {});
+      if (r.status === 409) { alert('Busy or currently playing.'); return; }
+      startCalPolling();
+    });
+
+    $('cal-stop').addEventListener('click', async () => {
+      try { await fetch('/arm/stop', { method: 'POST' }); } catch (e) {}
+      fetchCalibration();
+    });
+
+    async function homeOneJoint(j) {
+      const msg = j === 4
+        ? 'Home Axis 4? It will centre within its software limits.'
+        : `Home Axis ${j}? It will find both switches and park at the centre.`;
+      if (!confirm(msg)) return;
+      if (freedriveOn) await toggleFreedrive();
+      const r = await calPost('/arm/home', { joint: j });
+      if (r.status === 409) { alert('Busy or currently playing.'); return; }
+      startCalPolling();
+    }
+
+    $('cal-joints').addEventListener('click', e => {
+      const j = e.target.getAttribute('data-home');
+      if (j !== null) homeOneJoint(+j);
+    });
+    $('cal-m4').addEventListener('click', e => {
+      const j = e.target.getAttribute('data-home');
+      if (j !== null) homeOneJoint(+j);
+    });
+
+    $('cal-cfg').addEventListener('change', async e => {
+      const field = e.target.getAttribute('data-cfg');
+      const j = e.target.getAttribute('data-j');
+      if (!field || j === null) return;
+      const body = { joint: +j };
+      body[field] = field === 'dir' ? e.target.value : parseInt(e.target.value, 10);
+      try { await calPost('/arm/home/config', body); } catch (err) {}
+    });
+
+    fetchCalibration();
 
     $('t-rows').addEventListener('click', e => {
       const go = e.target.getAttribute('data-go');

@@ -509,6 +509,48 @@ MOTOR_CONFIG_DIR = os.path.join(
 )
 SOFT_LIMITS_FILE = os.path.join(MOTOR_CONFIG_DIR, "soft_limits.json")
 
+# ---------------------------------------------------------------------------
+# First-boot homing / ready-position calibration
+#   Motors 1-3 home against their physical end-stop switch (drive to switch ->
+#   that trip point is the reference). Motor 4 has no switch; it homes off the
+#   encoder's single-turn absolute angle (`value`, 0-65535) which is RETAINED
+#   across power cycles, so its position is known instantly on boot within one
+#   motor revolution (72 deg of output at the 5:1 reduction). The ready pose is
+#   stored as offsets from each joint's home reference so it survives reboots.
+# ---------------------------------------------------------------------------
+CALIBRATION_FILE = os.path.join(MOTOR_CONFIG_DIR, "calibration.json")
+HOMING_JOINTS = (1, 2, 3)          # motors that have a physical end-stop switch
+M4_ID = 4                          # single-turn absolute homing (no switch)
+HOME_SEEK_SPS = 600                # fast approach speed toward the switch
+HOME_CREEP_SPS = 90                # slow re-approach for a repeatable trip
+HOME_BACKOFF_SPS = 220             # speed used when backing off the switch
+HOME_BACKOFF_COUNTS = 1200         # distance to back off the switch, then creep
+HOME_STANDOFF_COUNTS = 1200        # rest position off the switch after homing
+# The seek keeps driving until the switch trips; it only gives up if the joint
+# stops making encoder progress for HOME_STALL_TIMEOUT_S (stalled against a hard
+# stop / dead switch / wrong direction). HOME_SEEK_MAX_S is an outer safety cap.
+HOME_PROGRESS_COUNTS = 30          # min encoder counts that counts as "moving"
+HOME_STALL_TIMEOUT_S = 3.0         # give up after this long with no progress
+HOME_SEEK_MAX_S = 180.0            # absolute cap on a single seek stage
+HOME_MOVE_TIMEOUT_S = 20.0         # max time for a back-off / standoff move
+# Half of one motor revolution in counts; the wrap-safe window for M4's
+# single-turn homing is +/- this (i.e. +/- 36 deg of output at 5:1).
+M4_HALF_REV_COUNTS = 32768
+# Default homing config per joint; "dir" is the direction that drives the joint
+# toward its switch. All fields overridable from the UI and persisted to
+# config/calibration.json.
+DEFAULT_HOMING_CFG = {
+    1: {"dir": "ccw", "seek_sps": HOME_SEEK_SPS, "creep_sps": HOME_CREEP_SPS,
+        "backoff": HOME_BACKOFF_COUNTS, "standoff": HOME_STANDOFF_COUNTS,
+        "order": 1},
+    2: {"dir": "ccw", "seek_sps": HOME_SEEK_SPS, "creep_sps": HOME_CREEP_SPS,
+        "backoff": HOME_BACKOFF_COUNTS, "standoff": HOME_STANDOFF_COUNTS,
+        "order": 2},
+    3: {"dir": "ccw", "seek_sps": HOME_SEEK_SPS, "creep_sps": HOME_CREEP_SPS,
+        "backoff": HOME_BACKOFF_COUNTS, "standoff": HOME_STANDOFF_COUNTS,
+        "order": 3},
+}
+
 
 def _clamp(value, lo, hi):
     return max(lo, min(hi, value))
@@ -1601,6 +1643,17 @@ class RobotArm:
             "total": 0,
             "message": "idle",
         }
+        # -- homing / ready-position calibration --
+        # For motors 1-3 the reference is the encoder count at the switch trip,
+        # (re-established each boot by the homing motion). For motor 4 the
+        # reference is the retained single-turn encoder value (survives reboot).
+        self.homed = {mid: False for mid in motors}
+        self.home_counts = {mid: None for mid in motors}
+        self.joint_span = {mid: None for mid in motors}
+        self.homing_cfg = {mid: dict(DEFAULT_HOMING_CFG[mid]) for mid in HOMING_JOINTS}
+        self._calib_busy = False
+        self._calib_msg = "not homed"
+        self._calib_thread = None
 
     # -- state ----------------------------------------------------------
     def _set_state(self, **kw):
@@ -1793,8 +1846,341 @@ class RobotArm:
         if os.path.exists(path):
             os.remove(path)
 
+    # -- homing / ready-position calibration ---------------------------
+    def _homing_cfg(self, mid):
+        cfg = dict(DEFAULT_HOMING_CFG.get(mid, {}))
+        cfg.update(self.homing_cfg.get(mid, {}))
+        return cfg
+
+    def _set_calib(self, busy=None, msg=None):
+        with self._state_lock:
+            if busy is not None:
+                self._calib_busy = bool(busy)
+            if msg is not None:
+                self._calib_msg = msg
+
+    def _drive_to_limit(self, mid, direction, sps):
+        """Drive a joint until its end-stop trips in the given direction.
+
+        Keeps going as long as the joint is still making encoder progress; only
+        gives up if it stalls (no motion for HOME_STALL_TIMEOUT_S), which means
+        it hit a hard stop, the switch is dead, or the direction is wrong.
+        """
+        m = self.motors[mid]
+        m.enable()
+        m.set_direction(direction)
+        m.set_speed(int(sps))
+        m.run_pulses()
+        last_counts = self._read_counts(mid)
+        last_progress = time.time()
+        hard_deadline = time.time() + HOME_SEEK_MAX_S
+        while time.time() < hard_deadline and not self._stop.is_set():
+            if m.limit_stop and m._blocked_dir == direction:
+                m.hold()
+                return True
+            cur = self._read_counts(mid)
+            if cur is not None:
+                if last_counts is None or abs(cur - last_counts) >= HOME_PROGRESS_COUNTS:
+                    last_counts = cur
+                    last_progress = time.time()
+            if time.time() - last_progress > HOME_STALL_TIMEOUT_S:
+                break  # no encoder progress -> stalled / not reaching the switch
+            time.sleep(0.02)
+        m.hold()
+        return False
+
+    def _drive_distance(self, mid, direction, counts, sps):
+        """Drive a joint a fixed encoder distance (used for back-off/standoff)."""
+        m = self.motors[mid]
+        start = self._read_counts(mid)
+        if start is None:
+            return False
+        m.enable()
+        m.set_direction(direction)
+        m.set_speed(int(sps))
+        m.run_pulses()
+        deadline = time.time() + HOME_MOVE_TIMEOUT_S
+        while time.time() < deadline and not self._stop.is_set():
+            cur = self._read_counts(mid)
+            if cur is not None and abs(cur - start) >= counts:
+                break
+            if m.limit_stop and m._blocked_dir == direction:
+                break  # ran into the switch before covering the distance
+            time.sleep(0.02)
+        m.hold()
+        return True
+
+    def _seek_switch_precise(self, mid, direction, cfg):
+        """Fast seek to the switch, back off, then slow creep for a clean trip."""
+        if not self._drive_to_limit(mid, direction, cfg["seek_sps"]):
+            return False
+        opp = "ccw" if direction == "cw" else "cw"
+        self._drive_distance(mid, opp, cfg["backoff"], HOME_BACKOFF_SPS)
+        if self._stop.is_set():
+            return False
+        return self._drive_to_limit(mid, direction, cfg["creep_sps"])
+
+    def _center_move(self, mid, target, dir_inc, dir_dec):
+        """Drive to an absolute encoder count in ONE direction (no hunting).
+
+        A fast proportional approach covers most of the distance, then a slow
+        creep finishes the last stretch and stops the moment the encoder reaches
+        or passes the target. Because it never reverses, the joint settles on
+        the centre without oscillating around it.
+        """
+        m = self.motors[mid]
+        m.enable()
+        cur = self._read_counts(mid)
+        if cur is None:
+            return
+        approach = dir_inc if target > cur else dir_dec
+        m.set_direction(approach)
+        guard = 4000  # counts left for the slow final creep
+        deadline = time.time() + HOME_MOVE_TIMEOUT_S * 2
+        # Phase 1: fast proportional approach to just short of the target.
+        while not self._stop.is_set() and time.time() < deadline:
+            cur = self._read_counts(mid)
+            if cur is None:
+                time.sleep(0.03)
+                continue
+            if abs(target - cur) <= guard:
+                break
+            m.set_speed(int(_clamp(abs(target - cur) * POS_KP, 200, HOME_SEEK_SPS)))
+            m.run_pulses()
+            time.sleep(0.03)
+        # Phase 2: slow creep, stop as soon as the centre is reached/passed.
+        m.set_direction(approach)
+        m.set_speed(HOME_CREEP_SPS)
+        m.run_pulses()
+        while not self._stop.is_set() and time.time() < deadline:
+            cur = self._read_counts(mid)
+            if cur is None:
+                time.sleep(0.02)
+                continue
+            passed = (cur >= target) if approach == dir_inc else (cur <= target)
+            if passed or abs(target - cur) <= POS_TOLERANCE_COUNTS:
+                break
+            time.sleep(0.02)
+        m.hold()
+
+    def home_joint(self, mid):
+        """Home one joint by finding BOTH end-stops and parking at the center.
+
+        Motors 1-3 seek the switch on one side, then the other, and stop exactly
+        halfway between them (the standing pose). Motor 4 has no switch and
+        homes off its retained single-turn value instead.
+        """
+        if mid == M4_ID:
+            return self._home_m4()
+        if mid not in self.motors:
+            return False
+        m = self.motors[mid]
+        cfg = self._homing_cfg(mid)
+        dir_a = cfg["dir"]
+        dir_b = "ccw" if dir_a == "cw" else "cw"
+        # Homing establishes the reference the software limits are measured
+        # from, so ignore those limits while seeking.
+        prev_soft = m.soft_limit_enabled
+        m.soft_limit_enabled = False
+        try:
+            self._set_calib(msg="homing joint %d (seeking side A)" % mid)
+            if not self._seek_switch_precise(mid, dir_a, cfg):
+                self._set_calib(msg="joint %d: side-A switch not reached" % mid)
+                return False
+            end_a = self._read_counts(mid)
+            # Back off, then cross to the opposite switch.
+            self._drive_distance(mid, dir_b, cfg["backoff"], HOME_BACKOFF_SPS)
+            if self._stop.is_set():
+                return False
+            self._set_calib(msg="homing joint %d (seeking side B)" % mid)
+            if not self._seek_switch_precise(mid, dir_b, cfg):
+                self._set_calib(msg="joint %d: side-B switch not reached" % mid)
+                return False
+            end_b = self._read_counts(mid)
+            if end_a is None or end_b is None:
+                self._set_calib(msg="joint %d: no encoder feedback" % mid)
+                return False
+            center = (end_a + end_b) // 2
+            self.home_counts[mid] = center
+            self.joint_span[mid] = [min(end_a, end_b), max(end_a, end_b)]
+            self.homed[mid] = True
+            # Learn the count polarity from the two measured ends: whichever
+            # command direction reached the HIGHER count is the one that raises
+            # the encoder. This is purely encoder-based, so the gear reducer
+            # is irrelevant. With polarity known, the closed-loop move drives
+            # the correct way and stops when the encoder actually reads centre.
+            inc_dir = dir_a if end_a > end_b else dir_b
+            self.polarity[mid] = 1 if inc_dir == "cw" else -1
+            dec_dir = "ccw" if inc_dir == "cw" else "cw"
+            self._set_calib(msg="joint %d centering" % mid)
+            self._center_move(mid, center, inc_dir, dec_dir)
+            self._set_calib(msg="joint %d homed (centered)" % mid)
+            return True
+        finally:
+            m.soft_limit_enabled = prev_soft
+
+    def _probe_count_dir(self, mid):
+        """Nudge the joint briefly to learn which command direction raises the
+        encoder count. Returns (inc_dir, dec_dir), or (None, None) if it could
+        not move either way."""
+        c0 = self._read_counts(mid)
+        if c0 is None:
+            return None, None
+        m = self.motors[mid]
+        for guess in ("cw", "ccw"):
+            m.enable()
+            m.set_direction(guess)
+            m.set_speed(HOME_CREEP_SPS)
+            m.run_pulses()
+            moved = 0
+            deadline = time.time() + 1.5
+            while time.time() < deadline and not self._stop.is_set():
+                time.sleep(0.05)
+                c = self._read_counts(mid)
+                if c is not None:
+                    moved = c - c0
+                    if abs(moved) >= HOME_PROGRESS_COUNTS:
+                        break
+            m.hold()
+            if abs(moved) >= HOME_PROGRESS_COUNTS:
+                inc = guess if moved > 0 else ("ccw" if guess == "cw" else "cw")
+                dec = "ccw" if inc == "cw" else "cw"
+                return inc, dec
+        return None, None
+
+    def _home_m4(self):
+        """Centre motor 4 in the MIDDLE of its user-defined software limits.
+
+        Motor 4 has no end-stop switch, so its safe travel is bounded by the
+        soft limits set in the UI; the centre of that band is its rest pose.
+        """
+        m = self.motors[M4_ID]
+        lo, hi = m.soft_limit_min, m.soft_limit_max
+        if lo is None or hi is None:
+            self._set_calib(msg="joint 4: set its soft limits first")
+            return False
+        lo, hi = int(lo), int(hi)
+        center = (lo + hi) // 2
+        inc, dec = self._probe_count_dir(M4_ID)
+        if inc is None:
+            self._set_calib(msg="joint 4: could not determine direction")
+            return False
+        self.polarity[M4_ID] = 1 if inc == "cw" else -1
+        self.home_counts[M4_ID] = center
+        self.joint_span[M4_ID] = [min(lo, hi), max(lo, hi)]
+        self._set_calib(msg="joint 4 centering")
+        self._center_move(M4_ID, center, inc, dec)
+        self.homed[M4_ID] = True
+        self._set_calib(msg="joint 4 homed (centered)")
+        return True
+
+    def home_all(self):
+        """Home all four joints at once, each in its own thread."""
+        self._stop.clear()
+        threads = []
+
+        def _run(mid):
+            try:
+                self.home_joint(mid)
+            except Exception:
+                pass
+
+        for mid in list(HOMING_JOINTS) + [M4_ID]:
+            t = threading.Thread(target=_run, args=(mid,), daemon=True)
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
+        done = sum(1 for mid in list(HOMING_JOINTS) + [M4_ID] if self.homed.get(mid))
+        self._set_calib(msg="homing complete (%d/4 centered)" % done)
+        return True
+
+    # -- calibration background runner & state -------------------------
+    def _run_calib(self, fn):
+        try:
+            fn()
+        finally:
+            self._set_calib(busy=False)
+
+    def start_calibration(self, action, joints=None):
+        """Kick off homing in a background thread."""
+        if self._calib_busy or self.state.get("playing"):
+            return False
+        if self._calib_thread and self._calib_thread.is_alive():
+            return False
+        if action == "home_all":
+            fn = self.home_all
+        elif action == "home_joint":
+            jid = int((joints or [0])[0])
+            fn = lambda: self.home_joint(jid)
+        else:
+            return False
+        self._stop.clear()
+        self._set_calib(busy=True)
+        self._calib_thread = threading.Thread(
+            target=self._run_calib, args=(fn,), daemon=True
+        )
+        self._calib_thread.start()
+        return True
+
+    def set_homing_cfg(self, mid, updates):
+        if mid not in HOMING_JOINTS or not isinstance(updates, dict):
+            return None
+        cfg = self.homing_cfg.setdefault(mid, dict(DEFAULT_HOMING_CFG[mid]))
+        if "dir" in updates and updates["dir"] in ("cw", "ccw"):
+            cfg["dir"] = updates["dir"]
+        for key in ("seek_sps", "creep_sps", "backoff", "standoff", "order"):
+            if key in updates and updates[key] is not None:
+                try:
+                    cfg[key] = int(updates[key])
+                except (TypeError, ValueError):
+                    pass
+        self.save_calibration()
+        return self._homing_cfg(mid)
+
+    def calibration_state(self):
+        return {
+            "busy": self._calib_busy,
+            "activity": self._calib_msg,
+            "homed": {str(k): bool(v) for k, v in self.homed.items()},
+            "home_counts": {str(k): v for k, v in self.home_counts.items()},
+            "joint_span": {str(k): v for k, v in self.joint_span.items()},
+            "homing_cfg": {str(m): self._homing_cfg(m) for m in HOMING_JOINTS},
+        }
+
+    # -- calibration persistence ---------------------------------------
+    def load_calibration(self):
+        try:
+            with open(CALIBRATION_FILE) as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            return
+        if not isinstance(data, dict):
+            return
+        homing = data.get("homing")
+        if isinstance(homing, dict):
+            for mid_str, cfg in homing.items():
+                try:
+                    mid = int(mid_str)
+                except (TypeError, ValueError):
+                    continue
+                if mid in HOMING_JOINTS and isinstance(cfg, dict):
+                    self.homing_cfg.setdefault(mid, dict(DEFAULT_HOMING_CFG[mid]))
+                    self.homing_cfg[mid].update(cfg)
+
+    def save_calibration(self):
+        os.makedirs(MOTOR_CONFIG_DIR, exist_ok=True)
+        data = {
+            "homing": {str(m): self._homing_cfg(m) for m in HOMING_JOINTS},
+        }
+        tmp = CALIBRATION_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, CALIBRATION_FILE)
+
 
 arm = RobotArm(motors, encoders)
+arm.load_calibration()
 
 
 # ---------------------------------------------------------------------------
@@ -3890,6 +4276,44 @@ def arm_stop():
 @app.route("/arm/status")
 def arm_status():
     return jsonify(arm.get_state())
+
+
+# -- Robot arm: homing & ready-position calibration ------------------------
+@app.route("/arm/calibration")
+def arm_calibration():
+    return jsonify(arm.calibration_state())
+
+
+@app.route("/arm/home", methods=["POST"])
+def arm_home():
+    """Home all joints, or a single joint via {"joint": <id>}."""
+    data = request.get_json(silent=True) or {}
+    joint = data.get("joint")
+    if joint is None:
+        ok = arm.start_calibration("home_all")
+    else:
+        try:
+            jid = int(joint)
+        except (TypeError, ValueError):
+            return jsonify({"error": "invalid joint"}), 400
+        ok = arm.start_calibration("home_joint", joints=[jid])
+    if not ok:
+        return jsonify({"error": "busy or playing"}), 409
+    return jsonify(arm.calibration_state())
+
+
+@app.route("/arm/home/config", methods=["POST"])
+def arm_home_config():
+    """Update per-joint homing settings (direction/speeds/backoff/order)."""
+    data = request.get_json(silent=True) or {}
+    try:
+        mid = int(data.get("joint"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid joint"}), 400
+    cfg = arm.set_homing_cfg(mid, data)
+    if cfg is None:
+        return jsonify({"error": "joint has no end-stop"}), 400
+    return jsonify({"joint": mid, "config": cfg})
 
 
 @app.route("/programs", methods=["GET"])
