@@ -639,6 +639,9 @@ class StepperMotor:
         # dedicated CW/CCW inputs.
         self.limit_stop = False
         self._blocked_dir = None
+        # When True, the run loop ignores the physical end-stop so a homing
+        # release routine can gently drive off an already-pressed switch.
+        self.ignore_limit = False
         self._limit_active_low = bool(limit_active_low)
         # Per-direction polarity: allow CW and CCW sensors to be wired differently.
         # Falls back to limit_active_low if not specified.
@@ -773,6 +776,8 @@ class StepperMotor:
                 else:
                     self._blocked_dir = None
                 limited = pressed and self._blocked_dir == self.direction
+            if self.ignore_limit:
+                limited = False
             self.limit_stop = limited
             if limited:
                 self.current_speed = 0.0
@@ -1061,6 +1066,12 @@ class StepperMotor:
             return self._limit is not None and bool(self._limit.is_active)
         except Exception:
             return False
+
+    def limit_pressed_any(self):
+        """True if ANY end-stop (shared or dedicated) is currently pressed."""
+        if self._limit_cw is not None or self._limit_ccw is not None:
+            return self._limit_pressed_cw() or self._limit_pressed_ccw()
+        return self._limit_pressed()
 
     def _limit_pressed_cw(self):
         try:
@@ -1910,6 +1921,72 @@ class RobotArm:
         m.hold()
         return True
 
+    def _nudge_until_released(self, mid, direction, max_counts):
+        """Gently drive a joint until its end-stop releases (limit bypassed).
+
+        Polls the encoder slowly so reads over the shared UART stay reliable
+        (fast polling returned bad reads and made a moving joint look stalled,
+        causing back-and-forth twitching). It commits to the direction until the
+        switch releases, it has travelled max_counts (wrong way -> caller
+        reverses), or it is clearly stalled against a hard stop for ~0.9 s.
+        Returns True only if the switch actually released.
+        """
+        m = self.motors[mid]
+        start = self._read_counts(mid)
+        if start is None:
+            return False
+        m.enable()
+        m.set_direction(direction)
+        m.set_speed(HOME_CREEP_SPS)
+        m.run_pulses()
+        last, last_prog = start, time.time()
+        released = False
+        while not self._stop.is_set():
+            if not m.limit_pressed_any():
+                released = True
+                break
+            cur = self._read_counts(mid)
+            if cur is not None:
+                if abs(cur - start) >= max_counts:
+                    break  # moved far without releasing -> wrong way, reverse
+                if abs(cur - last) >= HOME_PROGRESS_COUNTS:
+                    last, last_prog = cur, time.time()
+            if time.time() - last_prog > 0.9:
+                break  # sustained stall -> driving into a hard stop
+            time.sleep(0.1)
+        m.hold()
+        return released
+
+    def _release_switch(self, mid, dir_a, dir_b):
+        """If an end-stop is already pressed, back off to release it first.
+
+        With a shared limit line we cannot tell which end is pressed, so try one
+        direction; if the joint stalls (into a hard stop) or travels a long way
+        without releasing, switch to the other direction. Alternating this way
+        reliably finds the side that clears the switch. The physical limit is
+        bypassed and motion stays gentle throughout so it never forces itself
+        into a stop.
+        """
+        m = self.motors[mid]
+        if not m.limit_pressed_any():
+            return True
+        self._set_calib(msg="joint %d: switch pressed, backing off" % mid)
+        m.ignore_limit = True
+        try:
+            for direction in (dir_b, dir_a, dir_b, dir_a):
+                if self._stop.is_set() or not m.limit_pressed_any():
+                    break
+                if self._nudge_until_released(mid, direction, HOME_BACKOFF_COUNTS * 4):
+                    # Released: continue a little further to fully clear it.
+                    self._drive_distance(mid, direction, HOME_BACKOFF_COUNTS,
+                                         HOME_BACKOFF_SPS)
+                    break
+            m.hold()
+            return not m.limit_pressed_any()
+        finally:
+            m.ignore_limit = False
+            m.hold()
+
     def _seek_switch_precise(self, mid, direction, cfg):
         """Fast seek to the switch, back off, then slow creep for a clean trip."""
         if not self._drive_to_limit(mid, direction, cfg["seek_sps"]):
@@ -1983,6 +2060,11 @@ class RobotArm:
         prev_soft = m.soft_limit_enabled
         m.soft_limit_enabled = False
         try:
+            # If a switch is already pressed at rest, clear it first so the seek
+            # never drives the joint deeper into the pressed end-stop.
+            if not self._release_switch(mid, dir_a, dir_b):
+                self._set_calib(msg="joint %d: could not clear pressed switch" % mid)
+                return False
             self._set_calib(msg="homing joint %d (seeking side A)" % mid)
             if not self._seek_switch_precise(mid, dir_a, cfg):
                 self._set_calib(msg="joint %d: side-A switch not reached" % mid)
