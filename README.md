@@ -452,7 +452,7 @@ blink_led.py           Standalone onboard LED blink example
 service:
 
 ```powershell
-./led_app/redeploy.ps1 -PiHost 192.168.0.101 -PiUser andpi5
+./led_app/redeploy.ps1 -PiHost 192.168.100.177 -PiUser andpi5
 ```
 
 ## License

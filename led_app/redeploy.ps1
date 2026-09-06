@@ -8,10 +8,10 @@
 
 .EXAMPLE
   ./redeploy.ps1
-  ./redeploy.ps1 -PiHost 192.168.0.103 -PiUser andpi5
+  ./redeploy.ps1 -PiHost 192.168.100.177 -PiUser andpi5
 #>
 param(
-    [string]$PiHost = "192.168.0.103",
+    [string]$PiHost = "192.168.100.177",
     [string]$PiUser = "andpi5",
     [string]$RemoteDir = "/home/andpi5/led_app"
 )

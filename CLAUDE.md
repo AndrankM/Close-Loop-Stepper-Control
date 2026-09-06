@@ -45,7 +45,7 @@ cd ~/led_app
 
 **Deploy from Windows dev machine (copies `app.py` + `index.html`, restarts service):**
 ```powershell
-./led_app/redeploy.ps1 -PiHost 192.168.0.103 -PiUser andpi5
+./led_app/redeploy.ps1 -PiHost 192.168.100.177 -PiUser andpi5
 ```
 
 **First-time Pi setup (run once on the Pi):**
